@@ -1,4 +1,5 @@
 .stack-work
 .agda
 *.agdai
+.*.vim
 build
