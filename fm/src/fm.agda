@@ -4,7 +4,7 @@ open import Function
 open import Data.Nat
 open import Data.Char
 open import Data.List
-open import Data.Product using (_×_; _,_)
+open import Data.Product using (_×_; _,_; proj₁)
 open import Data.Vec using (Vec; fromList)
 open import Data.Maybe using (Maybe; just; nothing)
 import Data.Maybe as M
@@ -40,11 +40,8 @@ data Term (m : ℕ): Set where
   jz : n > 0 -> Term m
   jnz : n > 0 -> Term m
 
-fst : (A × B) -> A
-fst (a , b) = a
-
 parse : List (Token m) -> Maybe (List (Term m))
-parse ts = M.map (reverse ∘ fst) (foldr (go (fromList ts)) (just ([] , 0)) ts)
+parse ts = M.map (reverse ∘ proj₁) (foldr (go (fromList ts)) (just ([] , 0)) ts)
   where
     go : Vec (Token m) n -> Token m -> Maybe (List (Term m) × ℕ) -> Maybe (List (Term m) × ℕ)
     go _ _ nothing = nothing
