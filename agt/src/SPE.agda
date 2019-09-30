@@ -2,36 +2,43 @@ open import AGT
 open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Vec as V using (Vec)
-open import Function.Injection using (_↣_)
+open import Data.Product using (_,_)
+open import Function.Injection using (Injection; _↣_)
 open import Level using (_⊔_; suc)
+open import Function using (_|>_)
 
-module SPE (c : Currency ℓ ℓ₁ ℓ₂) (a : Allotment ℓ) (n : ℕ) where
+import Algebra.Morphism as M
 
-open Currency c renaming (A to C)
-open Allotment a renaming (A to A)
+module SPE (c : Currency ℓ ℓ₁ ℓ₂) (a : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
+           {h : _} (H : M.IsRingMorphism (Allotment.ring a) (Currency.ring c) h)
+           {X : Set ℓ} (Feasible : X ↣ Vec (Allotment.A a) n)
+           where
 
-record Valuation : Set (ℓ ⊔ ℓ₂) where
-  field
-    valuations : Vec C n
-    valuationsAreNonNegtive : {i : Fin n} → 0# ≤ V.lookup valuations i
-
+C = Currency.A c
+A = Allotment.A a
 Bid = Vec C n
 Allocation = Vec A n
 Payment = Vec C n
 Utility = Vec C n
 
-record Feasible : Set (suc ℓ) where
+record Valuation : Set (ℓ ⊔ ℓ₂) where
+  open Currency c
   field
-    X : Set ℓ
-    feasibleInj : X ↣ Allocation
+    valuations : Vec C n
+    valuationsAreNonNegtive : {i : Fin n} → 0# ≤ V.lookup valuations i
 
 record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
   field
     valuation : Valuation
-    allocation : Bid → Feasible
+    allocation : Bid → X
     payment : Bid → Payment
 
   open Valuation valuation
 
-  quasiLinearUtility : Bid -> Utility
-  quasiLinearUtility b = {!!}
+  quasiLinearUtility : Bid → Utility
+  quasiLinearUtility b = V.map q (V.zip (V.zip as (payment b)) valuations)
+    where
+      open Injection
+      as = Feasible ⟨$⟩ allocation b |> V.map h
+      open Currency c
+      q = λ { ((aᵢ , pᵢ) , vᵢ) → vᵢ * aᵢ - pᵢ }
