@@ -1,11 +1,14 @@
 open import AGT
+open import Relation.Nullary
 open import Data.Nat using (ℕ)
 open import Data.Fin using (Fin)
 open import Data.Vec as V using (Vec)
-open import Data.Product using (_,_)
+open import Data.Vec.All as A using (All)
+open import Data.Product
 open import Function.Injection using (Injection; _↣_)
 open import Level using (_⊔_; suc)
-open import Function using (_|>_)
+open import Function using (_|>_; _$_)
+open import Relation.Unary
 
 import Algebra.Morphism as M
 
@@ -34,11 +37,23 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
     payment : Bid → Payment
 
   open Valuation valuation
+  open Currency c
 
-  quasiLinearUtility : Bid → Utility
-  quasiLinearUtility b = V.map q (V.zip (V.zip as (payment b)) valuations)
-    where
-      open Injection
-      as = Feasible ⟨$⟩ allocation b |> V.map h
-      open Currency c
-      q = λ { ((aᵢ , pᵢ) , vᵢ) → vᵢ * aᵢ - pᵢ }
+
+  module _ (b : Bid) where
+    as = let open Injection in V.map h $ Feasible ⟨$⟩ allocation b
+
+    truthful : Pred (Fin n) ℓ₁
+    truthful i = V.lookup valuations i ≈ V.lookup b i
+
+    quasiLinear : Pred Utility (ℓ ⊔ ℓ₁)
+    quasiLinear us = All (λ { (uᵢ , ((aᵢ , pᵢ) , vᵢ)) → uᵢ ≈ vᵢ * aᵢ - pᵢ }) xs
+      where
+        xs = V.zip us (V.zip (V.zip as (payment b)) valuations)
+
+    nonNegativeUtility : {i : Fin n} {u : Utility}
+                       → truthful i -> quasiLinear u
+                       → All (λ { (pᵢ , (bᵢ , aᵢ)) → (0# ≤ pᵢ) × (pᵢ ≤ (bᵢ * aᵢ)) })
+                             (V.zip (payment b) (V.zip b as))
+                       → 0# ≤ V.lookup u i
+    nonNegativeUtility {i} t ql p = let a = A.lookup i ql in {!!}
