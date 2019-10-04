@@ -1,8 +1,9 @@
 open import AGT
 open import Utils
 
+open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
+
 open import Relation.Nullary
-open import Relation.Binary.PropositionalEquality
 open import Data.Nat using (ℕ)
 open import Data.Fin as F using (Fin; 0F)
 open import Data.Vec as V using (Vec; _∷_)
@@ -58,6 +59,8 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
                        → 0# ≤ V.lookup u i
     nonNegativeUtility {i} {u} t ql p with A.lookup i ql | A.lookup i p
     ... | Q | (Pzn , P) with V.lookup vbap i | proj₂ (V.lookup (V.zip u vbap) i) | proj₂-zip-lookup u vbap i
-    ... | _ | (vᵢ , bᵢ , aᵢ , pᵢ) | refl with proj₁ (V.lookup (V.zip u vbap) i) | proj₁-zip-lookup u vbap i
-    ... | _ | refl with V.lookup u i
-    ... | uᵢ = {!!}
+    ... | _ | (vᵢ , bᵢ , aᵢ , pᵢ) | ≡-refl with proj₁ (V.lookup (V.zip u vbap) i) | proj₁-zip-lookup u vbap i
+    ... | _ | ≡-refl with V.lookup u i
+    ... | uᵢ with trans (trans (+-cong Q refl) (trans (+-assoc _ _ _) (+-cong refl (-‿inverseˡ pᵢ)))) (+-identityʳ _)
+    ... | I with ≤-respʳ-≈ (sym (trans I (*-congʳ t))) P
+    ... | K = {!!}
