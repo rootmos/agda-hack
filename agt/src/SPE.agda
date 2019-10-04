@@ -1,15 +1,17 @@
 open import AGT
+open import Utils
+
 open import Relation.Nullary
+open import Relation.Binary.PropositionalEquality
 open import Data.Nat using (ℕ)
-open import Data.Fin using (Fin)
-open import Data.Vec as V using (Vec)
+open import Data.Fin as F using (Fin; 0F)
+open import Data.Vec as V using (Vec; _∷_)
 open import Data.Vec.All as A using (All)
 open import Data.Product
 open import Function.Injection using (Injection; _↣_)
 open import Level using (_⊔_; suc)
 open import Function using (_|>_; _$_)
 open import Relation.Unary
-
 import Algebra.Morphism as M
 
 module SPE (c : Currency ℓ ℓ₁ ℓ₂) (a : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
@@ -39,21 +41,23 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
   open Valuation valuation
   open Currency c
 
-
   module _ (b : Bid) where
     as = let open Injection in V.map h $ Feasible ⟨$⟩ allocation b
+    vbap = V.zip valuations $ V.zip b $ V.zip as $ payment b
 
     truthful : Pred (Fin n) ℓ₁
-    truthful i = V.lookup valuations i ≈ V.lookup b i
+    truthful i with V.lookup vbap i
+    ... | (vᵢ , bᵢ , _ ) = vᵢ ≈ bᵢ
 
     quasiLinear : Pred Utility (ℓ ⊔ ℓ₁)
-    quasiLinear us = All (λ { (uᵢ , ((aᵢ , pᵢ) , vᵢ)) → uᵢ ≈ vᵢ * aᵢ - pᵢ }) xs
-      where
-        xs = V.zip us (V.zip (V.zip as (payment b)) valuations)
+    quasiLinear us = All (λ { (uᵢ , vᵢ , _ , aᵢ , pᵢ) → uᵢ ≈ vᵢ * aᵢ - pᵢ }) (V.zip us vbap)
 
     nonNegativeUtility : {i : Fin n} {u : Utility}
                        → truthful i -> quasiLinear u
-                       → All (λ { (pᵢ , (bᵢ , aᵢ)) → (0# ≤ pᵢ) × (pᵢ ≤ (bᵢ * aᵢ)) })
-                             (V.zip (payment b) (V.zip b as))
+                       → All (λ { (_ , bᵢ , aᵢ , pᵢ) → (0# ≤ pᵢ) × (pᵢ ≤ (bᵢ * aᵢ)) }) vbap
                        → 0# ≤ V.lookup u i
-    nonNegativeUtility {i} t ql p = let a = A.lookup i ql in {!!}
+    nonNegativeUtility {i} {u} t ql p with A.lookup i ql | A.lookup i p
+    ... | Q | (Pzn , P) with V.lookup vbap i | proj₂ (V.lookup (V.zip u vbap) i) | proj₂-zip-lookup u vbap i
+    ... | _ | (vᵢ , bᵢ , aᵢ , pᵢ) | refl with proj₁ (V.lookup (V.zip u vbap) i) | proj₁-zip-lookup u vbap i
+    ... | _ | refl with V.lookup u i
+    ... | uᵢ = {!!}
