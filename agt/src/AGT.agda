@@ -2,8 +2,7 @@ module AGT where
 
 open import Algebra using (Ring; CommutativeRing)
 open import Algebra.Structures using (IsCommutativeRing)
-open import Algebra.FunctionProperties using (Op₁; Op₂)
-
+open import Algebra.FunctionProperties using (Op₁; Op₂; Cancellative)
 open import Relation.Binary using (Rel; IsPartialOrder)
 open import Level using (Level; _⊔_; suc)
 
@@ -24,6 +23,7 @@ record Currency ℓ ℓ₁ ℓ₂ : Set (suc (ℓ ⊔ ℓ₁ ⊔ ℓ₂)) where
     0# 1# : A
     isPartialOrder : IsPartialOrder _≈_ _≤_
     isCommutativeRing : IsCommutativeRing _≈_ _+_ _*_ -_ 0# 1#
+    +-cancel-≤ : Cancellative _≤_ _+_
 
   open IsCommutativeRing isCommutativeRing public
   open IsPartialOrder isPartialOrder public hiding (refl; reflexive; trans)

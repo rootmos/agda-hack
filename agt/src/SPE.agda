@@ -1,5 +1,5 @@
 open import AGT
-open import Utils
+import Utils as U
 
 open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
 
@@ -58,9 +58,6 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
                        → All (λ { (_ , bᵢ , aᵢ , pᵢ) → (0# ≤ pᵢ) × (pᵢ ≤ (bᵢ * aᵢ)) }) vbap
                        → 0# ≤ V.lookup u i
     nonNegativeUtility {i} {u} t ql p with A.lookup i ql | A.lookup i p
-    ... | Q | (Pzn , P) with V.lookup vbap i | proj₂ (V.lookup (V.zip u vbap) i) | proj₂-zip-lookup u vbap i
-    ... | _ | (vᵢ , bᵢ , aᵢ , pᵢ) | ≡-refl with proj₁ (V.lookup (V.zip u vbap) i) | proj₁-zip-lookup u vbap i
-    ... | _ | ≡-refl with V.lookup u i
-    ... | uᵢ with trans (trans (+-cong Q refl) (trans (+-assoc _ _ _) (+-cong refl (-‿inverseˡ pᵢ)))) (+-identityʳ _)
-    ... | I with ≤-respʳ-≈ (sym (trans I (*-congʳ t))) P
-    ... | K = {!!}
+    ... | Q | (_ , P) rewrite U.proj₂-zip-lookup u vbap i | U.proj₁-zip-lookup u vbap i =
+      let I = trans (trans (+-cong Q refl) (trans (+-assoc _ _ _) (+-cong refl (-‿inverseˡ _)))) (+-identityʳ _) in
+      ≤-respˡ-≈ (+-identityˡ _ |> sym) (≤-respʳ-≈ (trans I (*-congʳ t) |> sym) P) |> (proj₂ +-cancel-≤) _ _
