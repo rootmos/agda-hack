@@ -16,18 +16,17 @@ open import Function using (_|>_; _$_)
 open import Relation.Unary
 import Algebra.Morphism as M
 
-module SPE (c : Currency ℓ ℓ₁ ℓ₂) (a : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
-           {h : _} (H : M.IsRingMorphism (Allotment.ring a) (Currency.ring c) h)
-           {X : Set ℓ} (Feasible : X ↣ Vec (Allotment.A a) n)
+module SPE (ℂ : Currency ℓ ℓ₁ ℓ₂) (𝔸 : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
+           {h : _} (H : M.IsRingMorphism (Allotment.ring 𝔸) (Currency.ring ℂ) h)
+           {X : Set ℓ} (Feasible : X ↣ (Fin n → Allotment.A 𝔸))
            where
-open Currency c renaming (A to C)
-open Allotment a using () renaming (A to A; _≤_ to _≤ᵃ_)
+open Currency ℂ renaming (A to C)
+open Allotment 𝔸 using () renaming (A to A; _≤_ to _≤ᵃ_)
 
-Bid = Vec C n
-Allocation = Vec A n
-Payment = Vec C n
-Utility = Vec C n
-Valuation = Σ (Vec C n) (All (λ vᵢ → 0# ≤ vᵢ))
+Bid = Fin n → C
+Payment = Fin n → C
+Utility = Fin n → C
+Valuation = Σ (Fin n → C) (λ v → ∀ {i} → 0# ≤ v i)
 
 record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
   field
@@ -35,25 +34,28 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
     allocation : Bid → X
     payment : Bid → Payment
 
-  monotone : Pred (Bid → X) (ℓ ⊔ ℓ₂)
-  monotone a = ∀ {i b₀ b₁} → V.lookup b₀ i ≤ V.lookup b₁ i
-             → V.lookup (Feasible ⟨$⟩ a b₀) i ≤ᵃ V.lookup (Feasible ⟨$⟩ a b₁) i
+  private
+    v = proj₁ valuation
+    aᶜ : Bid → Fin n → C
+    aᶜ b i = h $ Feasible ⟨$⟩ allocation b $ i
+
+  quasiLinear : Σ[ u ∈ (Bid → Utility) ] ( ∀ b i → u b i ≡ v i * aᶜ b i - payment b i)
+  quasiLinear = (λ b i → v i * aᶜ b i - payment b i) , λ _ _ → ≡-refl
 
   module _ (b : Bid) where
-    as = V.map h $ Feasible ⟨$⟩ allocation b
-    vbap = V.zip (proj₁ valuation) $ V.zip b $ V.zip as $ payment b
+    private
+      p = payment b
+      a = aᶜ b
 
     truthful : Pred (Fin n) ℓ₁
-    truthful i with V.lookup vbap i
-    ... | (vᵢ , bᵢ , _ ) = vᵢ ≈ bᵢ
+    truthful i = v i ≈ b i
 
-    quasiLinear : Pred Utility (ℓ ⊔ ℓ₁)
-    quasiLinear us = All (λ { (uᵢ , vᵢ , _ , aᵢ , pᵢ) → uᵢ ≈ vᵢ * aᵢ - pᵢ }) (V.zip us vbap)
-
-    nonNegativeUtility : ∀ {i u} → truthful i -> quasiLinear u
-                       → All (λ { (_ , bᵢ , aᵢ , pᵢ) → (0# ≤ pᵢ) × (pᵢ ≤ (bᵢ * aᵢ)) }) vbap
-                       → 0# ≤ V.lookup u i
-    nonNegativeUtility {i} {u} t ql p with A.lookup i ql | A.lookup i p
-    ... | Q | (_ , P) rewrite U.proj₂-zip-lookup u vbap i | U.proj₁-zip-lookup u vbap i =
-      let I = trans (trans (+-cong Q refl) (trans (+-assoc _ _ _) (+-cong refl (-‿inverseˡ _)))) (+-identityʳ _) in
-      ≤-respˡ-≈ (+-identityˡ _ |> sym) (≤-respʳ-≈ (trans I (*-congʳ t) |> sym) P) |> (proj₂ +-cancel-≤) _ _
+    nonNegativeUtility : (∀ i → p i ≤ (b i * a i))
+                       → ∀ {i} → truthful i → 0# ≤ proj₁ quasiLinear b i
+    nonNegativeUtility P {i} t rewrite proj₂ quasiLinear b i =
+      let Q₀ = trans (+-identityʳ _) (*-congʳ t) in
+      let Q₁ = trans (+-cong refl (-‿inverseˡ _)) Q₀ in
+      let Q₂ = trans (+-assoc _ _ _) Q₁ in
+      ≤-respʳ-≈ (sym Q₂) (P i)
+        |> ≤-respˡ-≈ (sym $ +-identityˡ _)
+        |> proj₂ +-cancel-≤ _ _
