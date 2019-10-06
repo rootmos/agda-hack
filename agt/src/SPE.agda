@@ -2,13 +2,13 @@ open import AGT
 import Utils as U
 
 open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
-
 open import Relation.Nullary
 open import Data.Nat using (ℕ)
 open import Data.Fin as F using (Fin; 0F)
 open import Data.Vec as V using (Vec; _∷_)
 open import Data.Vec.All as A using (All)
 open import Data.Product
+open import Function.Equivalence using (_⇔_)
 open import Function.Injection using (Injection; _↣_)
 open Function.Injection.Injection
 open import Level using (_⊔_; suc)
@@ -28,7 +28,20 @@ Payment = Fin n → C
 Utility = Fin n → C
 Valuation = Σ (Fin n → C) (λ v → ∀ {i} → 0# ≤ v i)
 
+UtilityModel = Bid → Utility
+
+DominantStrategy : UtilityModel → Fin n → Pred C (ℓ ⊔ ℓ₂)
+DominantStrategy um i bᵢ = ∀ (b₌ : Σ[ b ∈ Bid ] b i ≡ bᵢ) b → um b i ≤ um (proj₁ b₌) i
+
+DSIC : UtilityModel -> Valuation → _
+DSIC um (v , _) = ∀ i → DominantStrategy um i (v i)
+
+Monotone : Pred (Bid → X) (ℓ ⊔ ℓ₂)
+Monotone a = ∀ {i b₀ b₁} → b₀ i ≤ b₁ i
+           → (Feasible ⟨$⟩ a b₀ $ i) ≤ᵃ (Feasible ⟨$⟩ a b₁ $ i)
+
 record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
+  constructor DR
   field
     valuation : Valuation
     allocation : Bid → X
@@ -39,7 +52,7 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
     aᶜ : Bid → Fin n → C
     aᶜ b i = h $ Feasible ⟨$⟩ allocation b $ i
 
-  quasiLinear : Σ[ u ∈ (Bid → Utility) ] ( ∀ b i → u b i ≡ v i * aᶜ b i - payment b i)
+  quasiLinear : Σ[ u ∈ UtilityModel ] ∀ b i → u b i ≡ v i * aᶜ b i - payment b i
   quasiLinear = (λ b i → v i * aᶜ b i - payment b i) , λ _ _ → ≡-refl
 
   module _ (b : Bid) where
@@ -59,3 +72,21 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
       ≤-respʳ-≈ (sym Q₂) (P i)
         |> ≤-respˡ-≈ (sym $ +-identityˡ _)
         |> proj₂ +-cancel-≤ _ _
+
+Implementable : UtilityModel → Pred DirectRelevation (ℓ ⊔ ℓ₂)
+Implementable um dr = DSIC um (DirectRelevation.valuation dr)
+
+module Myerson (um : UtilityModel) (v : Valuation) where
+
+  module _ {a} (M : Monotone a) where
+    formula : Σ[ p ∈ (Bid → Payment) ] ∀ {i b} → b i ≈ 0# → p b i ≈ 0#
+    formula = {!!}
+
+    dr : DirectRelevation
+    dr = DR v a (proj₁ formula)
+
+    isDSIC : DSIC um v
+    isDSIC = {!!}
+
+  implementable : ∀ {dr a} → Implementable um dr ⇔ Monotone a
+  implementable = {!!}
