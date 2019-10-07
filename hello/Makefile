@@ -1,8 +1,6 @@
 include ../common.mk
 
-run: $(BUILD)/hello
-	@"$<"
+$(eval $(call exe, hello, src/hello.agda))
 
+.PHONY: clean
 clean: .clean
-
-.PHONY: run

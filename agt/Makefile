@@ -1,8 +1,7 @@
 include ../common.mk
 
-run: $(BUILD)/Main
-	@"$<"
+$(eval $(call check, agt, src/AGT.agda))
 
+.PHONY: clean
 clean: .clean
 
-.PHONY: run

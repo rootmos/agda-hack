@@ -1,11 +1,13 @@
+{-# OPTIONS --allow-unsolved-metas #-}
 module fm where
 
 open import Function
-open import Data.Nat
+open import Data.Nat using (ℕ; _>_; _+_)
+open import Data.Fin using (Fin)
 open import Data.Char
 open import Data.List
 open import Data.Product using (_×_; _,_; proj₁)
-open import Data.Vec using (Vec; fromList)
+open import Data.Vec as V using (Vec; fromList)
 open import Data.Maybe using (Maybe; just; nothing)
 import Data.Maybe as M
 
@@ -49,5 +51,5 @@ parse ts = M.map (reverse ∘ proj₁) (foldr (go (fromList ts)) (just ([] , 0))
     go _ left (just (ts , i)) = just (left ∷ ts , i + 1)
     go _ right (just (ts , i)) = just (right ∷ ts , i + 1)
     go _ (comment _) (just (ts , i)) = just (ts , i + 1)
-    go p jz (just x) = ?
-    go p jnz (just x) = ?
+    go p jz (just x) = nothing -- TODO
+    go p jnz (just x) = nothing -- TODO

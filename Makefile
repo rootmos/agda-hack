@@ -1,6 +1,11 @@
 ROOT := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 STACK ?= stack
 
+all:
+	$(MAKE) -C agt
+	$(MAKE) -C hello
+	$(MAKE) -C fm
+
 setup: $(HOME)/.agda
 	$(STACK) install Agda-2.6.0.1 ieee754
 

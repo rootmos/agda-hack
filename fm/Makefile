@@ -1,8 +1,6 @@
 include ../common.mk
 
-run: $(BUILD)/fm
-	@"$<"
+$(eval $(call check, fm, src/fm.agda))
 
+.PHONY: clean
 clean: .clean
-
-.PHONY: run

@@ -1,4 +1,5 @@
-open import AGT
+{-# OPTIONS --allow-unsolved-metas #-}
+open import Structures
 import Utils as U
 
 open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
