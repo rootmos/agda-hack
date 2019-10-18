@@ -9,9 +9,7 @@ open import Data.Fin as F using (Fin; 0F)
 open import Data.Vec as V using (Vec; _∷_)
 open import Data.Vec.All as A using (All)
 open import Data.Product
-open import Function.Equivalence using (_⇔_)
-open import Function.Injection using (Injection; _↣_)
-open Function.Injection.Injection
+open import Function.Equivalence using (_⇔_; equivalence)
 open import Level using (_⊔_; suc)
 open import Function using (_|>_; _$_)
 open import Relation.Unary
@@ -19,44 +17,43 @@ import Algebra.Morphism as M
 
 module SPE (ℂ : Currency ℓ ℓ₁ ℓ₂) (𝔸 : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
            {h : _} (H : M.IsRingMorphism (Allotment.ring 𝔸) (Currency.ring ℂ) h)
-           {X : Set ℓ} (Feasible : X ↣ (Fin n → Allotment.A 𝔸))
+           (Feasible : Pred (Allotment.A 𝔸) ℓ)
            where
 open Currency ℂ renaming (A to C)
 open Allotment 𝔸 using () renaming (A to A; _≤_ to _≤ᵃ_)
 
+Allocation = Fin n → Σ[ x ∈ A ] Feasible x
 Bid = Fin n → C
 Payment = Fin n → C
 Utility = Fin n → C
-Valuation = Σ (Fin n → C) (λ v → ∀ {i} → 0# ≤ v i)
+Valuation = Fin n → C -- TODO: is it possible to keep the non-negativity requirement? Σ (Fin n → C) (λ v → ∀ {i} → 0# ≤ v i)
 
-UtilityModel = Bid → Utility
+UtilityModel = Valuation → Bid → Utility
 
-DominantStrategy : UtilityModel → Fin n → Pred C (ℓ ⊔ ℓ₂)
+DominantStrategy : (Bid → Utility) → Fin n → Pred C (ℓ ⊔ ℓ₂)
 DominantStrategy um i bᵢ = ∀ (b₌ : Σ[ b ∈ Bid ] b i ≡ bᵢ) b → um b i ≤ um (proj₁ b₌) i
 
-DSIC : UtilityModel -> Valuation → _
-DSIC um (v , _) = ∀ i → DominantStrategy um i (v i)
+DSIC : Pred (Valuation → Bid → Utility) _
+DSIC um = ∀ v i → DominantStrategy (um v) i (v i)
 
-Monotone : Pred (Bid → X) (ℓ ⊔ ℓ₂)
+Monotone : Pred (Bid → Allocation) (ℓ ⊔ ℓ₂)
 Monotone a = ∀ {i b₀ b₁} → b₀ i ≤ b₁ i
-           → (Feasible ⟨$⟩ a b₀ $ i) ≤ᵃ (Feasible ⟨$⟩ a b₁ $ i)
+           → (proj₁ $ a b₀ i) ≤ᵃ (proj₁ $ a b₁ i)
 
 record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
   constructor DR
   field
-    valuation : Valuation
-    allocation : Bid → X
+    allocation : Bid → Allocation
     payment : Bid → Payment
 
   private
-    v = proj₁ valuation
     aᶜ : Bid → Fin n → C
-    aᶜ b i = h $ Feasible ⟨$⟩ allocation b $ i
+    aᶜ b i = h $ proj₁ $ allocation b i
 
-  quasiLinear : Σ[ u ∈ UtilityModel ] ∀ b i → u b i ≡ v i * aᶜ b i - payment b i
-  quasiLinear = (λ b i → v i * aᶜ b i - payment b i) , λ _ _ → ≡-refl
+  quasiLinear : Σ[ u ∈ (Valuation → Bid → Utility) ] ∀ v b i → u v b i ≡ v i * aᶜ b i - payment b i
+  quasiLinear = (λ v b i → v i * aᶜ b i - payment b i) , λ _ _ _ → ≡-refl
 
-  module _ (b : Bid) where
+  module _ (v : Valuation) (b : Bid) where
     private
       p = payment b
       a = aᶜ b
@@ -65,8 +62,8 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
     truthful i = v i ≈ b i
 
     nonNegativeUtility : (∀ i → p i ≤ (b i * a i))
-                       → ∀ {i} → truthful i → 0# ≤ proj₁ quasiLinear b i
-    nonNegativeUtility P {i} t rewrite proj₂ quasiLinear b i =
+                       → ∀ {i} → truthful i → 0# ≤ proj₁ quasiLinear v b i
+    nonNegativeUtility P {i} t rewrite proj₂ quasiLinear v b i =
       let Q₀ = trans (+-identityʳ _) (*-congʳ t) in
       let Q₁ = trans (+-cong refl (-‿inverseˡ _)) Q₀ in
       let Q₂ = trans (+-assoc _ _ _) Q₁ in
@@ -74,20 +71,45 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
         |> ≤-respˡ-≈ (sym $ +-identityˡ _)
         |> proj₂ +-cancel-≤ _ _
 
-Implementable : UtilityModel → Pred DirectRelevation (ℓ ⊔ ℓ₂)
-Implementable um dr = DSIC um (DirectRelevation.valuation dr)
+  Implementable : Set (ℓ ⊔ ℓ₂)
+  Implementable = DSIC (proj₁ quasiLinear)
 
-module Myerson (um : UtilityModel) (v : Valuation) where
+module Myerson where
 
   module _ {a} (M : Monotone a) where
     formula : Σ[ p ∈ (Bid → Payment) ] ∀ {i b} → b i ≈ 0# → p b i ≈ 0#
     formula = {!!}
 
     dr : DirectRelevation
-    dr = DR v a (proj₁ formula)
+    dr = DR a (proj₁ formula)
 
-    isDSIC : DSIC um v
-    isDSIC = {!!}
+    isDSIC : DSIC (proj₁ $ DirectRelevation.quasiLinear dr)
+    isDSIC v i (b₌ , pb₌) b with DirectRelevation.quasiLinear dr
+    ... | (ql , Q) with Q b v i | proj₁ formula
+    ... | Qb | F =
+      let x = λ b → proj₁ $ DirectRelevation.allocation dr b i in
+      let p = λ b → DirectRelevation.payment dr b i in
+      {!!}
 
-  implementable : ∀ {dr a} → Implementable um dr ⇔ Monotone a
-  implementable = {!!}
+module _ {dr : DirectRelevation} (T : ∀ {x y} → h x ≤ h y → x ≤ᵃ y) where
+  open DirectRelevation dr
+
+  moveʳ : {a b c : C} → (a + b) ≤ c → a ≤ (c + - b)
+  moveʳ P = proj₂ +-cancel-≤ _ _ $ ≤-respʳ-≈ (sym $ trans (+-assoc _ _ _) $ trans (+-congˡ $ -‿inverseˡ _) $ +-identityʳ _) P
+
+  moveˡ : {a b c : C} → a ≤ (b + c) → (a + - b) ≤ c
+  moveˡ P = {!!}
+
+  implementable : Implementable ⇔ Monotone allocation
+  implementable = equivalence to {!!}
+    where
+      to : Implementable → Monotone allocation
+      to I {i} {y} {z} B with I y i (y , ≡-refl) z | I z i (z , ≡-refl) y
+      ... | P₀ | Q₀ with payment y i | payment z i | z i | y i | h (proj₁ (allocation y i)) | h (proj₁ (allocation z i))
+      ... | py | pz | zi | yi | ay | az =
+        let P = moveˡ $ ≤-respʳ-≈ (+-assoc _ _ _) $ moveʳ P₀ in
+        let Q = moveˡ $ ≤-respʳ-≈ (trans (sym $ +-congʳ $ +-comm _ _) (+-assoc _ _ _)) $ moveʳ $ ≤-respˡ-≈ (+-comm _ _) $ Q₀ in
+        let R = ≤-trans P Q in
+        T {!!}
+
+

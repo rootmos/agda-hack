@@ -26,7 +26,8 @@ record Currency ℓ ℓ₁ ℓ₂ : Set (suc (ℓ ⊔ ℓ₁ ⊔ ℓ₂)) where
     +-cancel-≤ : Cancellative _≤_ _+_
 
   open IsCommutativeRing isCommutativeRing public
-  open IsPartialOrder isPartialOrder public hiding (refl; reflexive; trans)
+  open IsPartialOrder isPartialOrder public
+    renaming (refl to ≤-refl; trans to ≤-trans) hiding (reflexive)
 
   commutativeRing : CommutativeRing _ _
   commutativeRing = record { isCommutativeRing = isCommutativeRing }
