@@ -43,20 +43,33 @@ module Integer where
   open import Data.Integer.Properties
   open import Data.Nat as ℕ using (ℕ)
 
+  private
+    +-cancelˡ-≤-pos-step : ∀ a b → + 1 + a ≤ + 1 + b → a ≤ b
+    +-cancelˡ-≤-pos-step (+ _) (+ _) (+≤+ (ℕ.s≤s m≤n)) = +≤+ m≤n
+    +-cancelˡ-≤-pos-step (+ _) -[1+ 0 ] (+≤+ ())
+    +-cancelˡ-≤-pos-step -[1+ _ ] (+ _) _ = -≤+
+    +-cancelˡ-≤-pos-step -[1+ 0 ] -[1+ 0 ] _ = -≤- ℕ.z≤n
+    +-cancelˡ-≤-pos-step -[1+ ℕ.suc _ ] -[1+ 0 ] _ = -≤- ℕ.z≤n
+    +-cancelˡ-≤-pos-step -[1+ ℕ.suc _ ] -[1+ ℕ.suc _ ] (-≤- n≤m) = -≤- (ℕ.s≤s n≤m)
+
+    +-cancelˡ-≤-neg-step : ∀ a b → -[1+ 0 ] + a ≤ -[1+ 0 ] + b → a ≤ b
+    +-cancelˡ-≤-neg-step (+ 0) (+ _) _ = +≤+ ℕ.z≤n
+    +-cancelˡ-≤-neg-step +[1+ _ ] +[1+ _ ] (+≤+ m≤n) = +≤+ (ℕ.s≤s m≤n)
+    +-cancelˡ-≤-neg-step -[1+ _ ] (+ _) _ = -≤+
+    +-cancelˡ-≤-neg-step -[1+ _ ] -[1+ _ ] (-≤- (ℕ.s≤s n≤m)) = -≤- n≤m
+    +-cancelˡ-≤-neg-step (+ 0) -[1+ _ ] (-≤- ())
+
   +-cancelˡ-≤ : LeftCancellative _≤_ _+_
   +-cancelˡ-≤ (+ 0) {a} {b} P rewrite +-identityˡ a | +-identityˡ b = P
-  +-cancelˡ-≤ +[1+ n ] {b} {c} P rewrite +-assoc (+ 1) (+ n) b | +-assoc (+ 1) (+ n) c = +-cancelˡ-≤ (+ n) (l _ _ P)
-    where l : ∀ a b → + 1 + a ≤ + 1 + b → a ≤ b
-          l (+ _) (+ _) (+≤+ (ℕ.s≤s m≤n)) = +≤+ m≤n
-          l (+ _) -[1+ 0 ] (+≤+ ())
-          l -[1+ _ ] (+ _) _ = -≤+
-          l -[1+ 0 ] -[1+ 0 ] _ = -≤- ℕ.z≤n
-          l -[1+ ℕ.suc _ ] -[1+ 0 ] _ = -≤- ℕ.z≤n
-          l -[1+ ℕ.suc _ ] -[1+ ℕ.suc _ ] (-≤- n≤m) = -≤- (ℕ.s≤s n≤m)
-  +-cancelˡ-≤ -[1+ n ] {b} {c} P = {!!}
+  +-cancelˡ-≤ +[1+ n ] {b} {c} P rewrite +-assoc (+ 1) (+ n) b | +-assoc (+ 1) (+ n) c = +-cancelˡ-≤ (+ n) (+-cancelˡ-≤-pos-step _ _ P)
+  +-cancelˡ-≤ -[1+ 0 ] {b} {c} P = +-cancelˡ-≤-neg-step _ _ P
+  +-cancelˡ-≤ -[1+ ℕ.suc n ] {b} {c} P rewrite +-assoc -[1+ 0 ] -[1+ n ] b | +-assoc -[1+ 0 ] -[1+ n ] c = +-cancelˡ-≤ -[1+ n ] (+-cancelˡ-≤-neg-step _ _ P)
+
+  +-cancelʳ-≤ : RightCancellative _≤_ _+_
+  +-cancelʳ-≤ {c} a b P rewrite +-comm a c | +-comm b c = +-cancelˡ-≤ c P
 
   +-cancel-≤ : Cancellative _≤_ _+_
-  +-cancel-≤ = +-cancelˡ-≤ , {!!}
+  +-cancel-≤ = +-cancelˡ-≤ , +-cancelʳ-≤
 
   isCurrency : Σ[ c ∈ Currency _ _ ] Currency.A c ≡ ℤ
   isCurrency = (C , ≡-refl)
