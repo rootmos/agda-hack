@@ -45,8 +45,15 @@ module Integer where
 
   +-cancelˡ-≤ : LeftCancellative _≤_ _+_
   +-cancelˡ-≤ (+ 0) {a} {b} P rewrite +-identityˡ a | +-identityˡ b = P
-  +-cancelˡ-≤ (+ (ℕ.suc n)) {b} {c} P = +-cancelˡ-≤ (+ n) {!!}
-  +-cancelˡ-≤ (-[1+_] n) P = {!!}
+  +-cancelˡ-≤ +[1+ n ] {b} {c} P rewrite +-assoc (+ 1) (+ n) b | +-assoc (+ 1) (+ n) c = +-cancelˡ-≤ (+ n) (l _ _ P)
+    where l : ∀ a b → + 1 + a ≤ + 1 + b → a ≤ b
+          l (+ _) (+ _) (+≤+ (ℕ.s≤s m≤n)) = +≤+ m≤n
+          l (+ _) -[1+ 0 ] (+≤+ ())
+          l -[1+ _ ] (+ _) _ = -≤+
+          l -[1+ 0 ] -[1+ 0 ] _ = -≤- ℕ.z≤n
+          l -[1+ ℕ.suc _ ] -[1+ 0 ] _ = -≤- ℕ.z≤n
+          l -[1+ ℕ.suc _ ] -[1+ ℕ.suc _ ] (-≤- n≤m) = -≤- (ℕ.s≤s n≤m)
+  +-cancelˡ-≤ -[1+ n ] {b} {c} P = {!!}
 
   +-cancel-≤ : Cancellative _≤_ _+_
   +-cancel-≤ = +-cancelˡ-≤ , {!!}
