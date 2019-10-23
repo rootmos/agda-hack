@@ -1,12 +1,13 @@
-module Structures where
-
 open import Algebra using (Ring; CommutativeRing)
 open import Algebra.Structures using (IsCommutativeRing)
 open import Algebra.FunctionProperties using (Op₁; Op₂; Cancellative; LeftCancellative; RightCancellative)
 open import Relation.Binary using (Rel; IsPartialOrder)
 open import Level using (Level; _⊔_; suc)
 open import Data.Product
+open import Data.Sum
 open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
+
+module Structures where
 
 variable
   ℓ ℓ₁ ℓ₂ : Level
@@ -27,6 +28,7 @@ record Currency ℓ₁ ℓ₂ : Set (suc (ℓ₁ ⊔ ℓ₂)) where
     isPartialOrder : IsPartialOrder _≈_ _≤_
     isCommutativeRing : IsCommutativeRing _≈_ _+_ _*_ -_ 0# 1#
     +-cancel-≤ : Cancellative _≤_ _+_
+    zeroProduct : ∀ {a b} → a * b ≈ 0# → a ≈ 0# ⊎ b ≈ 0#
 
   open IsCommutativeRing isCommutativeRing public
   open IsPartialOrder isPartialOrder public
@@ -42,6 +44,7 @@ module Integer where
   open import Data.Integer
   open import Data.Integer.Properties
   open import Data.Nat as ℕ using (ℕ)
+  import Data.Nat.Properties as ℕₚ
 
   private
     +-cancelˡ-≤-pos-step : ∀ a b → + 1 + a ≤ + 1 + b → a ≤ b
@@ -53,14 +56,14 @@ module Integer where
     +-cancelˡ-≤-pos-step -[1+ ℕ.suc _ ] -[1+ ℕ.suc _ ] (-≤- n≤m) = -≤- (ℕ.s≤s n≤m)
 
     +-cancelˡ-≤-neg-step : ∀ a b → -[1+ 0 ] + a ≤ -[1+ 0 ] + b → a ≤ b
-    +-cancelˡ-≤-neg-step (+ 0) (+ _) _ = +≤+ ℕ.z≤n
+    +-cancelˡ-≤-neg-step +0 (+ _) _ = +≤+ ℕ.z≤n
     +-cancelˡ-≤-neg-step +[1+ _ ] +[1+ _ ] (+≤+ m≤n) = +≤+ (ℕ.s≤s m≤n)
     +-cancelˡ-≤-neg-step -[1+ _ ] (+ _) _ = -≤+
     +-cancelˡ-≤-neg-step -[1+ _ ] -[1+ _ ] (-≤- (ℕ.s≤s n≤m)) = -≤- n≤m
-    +-cancelˡ-≤-neg-step (+ 0) -[1+ _ ] (-≤- ())
+    +-cancelˡ-≤-neg-step +0 -[1+ _ ] (-≤- ())
 
   +-cancelˡ-≤ : LeftCancellative _≤_ _+_
-  +-cancelˡ-≤ (+ 0) {a} {b} P rewrite +-identityˡ a | +-identityˡ b = P
+  +-cancelˡ-≤ +0 {a} {b} P rewrite +-identityˡ a | +-identityˡ b = P
   +-cancelˡ-≤ +[1+ n ] {b} {c} P rewrite +-assoc (+ 1) (+ n) b | +-assoc (+ 1) (+ n) c = +-cancelˡ-≤ (+ n) (+-cancelˡ-≤-pos-step _ _ P)
   +-cancelˡ-≤ -[1+ 0 ] {b} {c} P = +-cancelˡ-≤-neg-step _ _ P
   +-cancelˡ-≤ -[1+ ℕ.suc n ] {b} {c} P rewrite +-assoc -[1+ 0 ] -[1+ n ] b | +-assoc -[1+ 0 ] -[1+ n ] c = +-cancelˡ-≤ -[1+ n ] (+-cancelˡ-≤-neg-step _ _ P)
@@ -71,11 +74,19 @@ module Integer where
   +-cancel-≤ : Cancellative _≤_ _+_
   +-cancel-≤ = +-cancelˡ-≤ , +-cancelʳ-≤
 
+  zeroProduct : ∀ {a b} → a * b ≡ +0 → a ≡ +0 ⊎ b ≡ +0
+  zeroProduct {_} {b} _ with signAbs b
+  zeroProduct {_} {.+0} _ | s ◂ 0 = inj₂ ≡-refl
+  zeroProduct {a} {.(s ◃ ℕ.suc n)} P | s ◂ ℕ.suc n
+    rewrite abs-◃ s (ℕ.suc n) with ℕₚ.m*n≡0⇒m≡0∨n≡0 ∣ a ∣ (abs-cong {s₂ = s} P)
+  ... | inj₁ R = inj₁ (∣n∣≡0⇒n≡0 R)
+
   isCurrency : Σ[ c ∈ Currency _ _ ] Currency.A c ≡ ℤ
   isCurrency = (C , ≡-refl)
     where C = record { isCommutativeRing = +-*-isCommutativeRing
                      ; isPartialOrder = ≤-isPartialOrder
                      ; +-cancel-≤ = +-cancel-≤
+                     ; zeroProduct = zeroProduct
                      }
 
 record Allotment ℓ ℓ₁ ℓ₂ : Set (suc (ℓ ⊔ ℓ₁ ⊔ ℓ₂)) where
