@@ -2,10 +2,12 @@ open import Algebra using (Ring; CommutativeRing)
 open import Algebra.Structures using (IsCommutativeRing)
 open import Algebra.FunctionProperties using (Op₁; Op₂; Cancellative; LeftCancellative; RightCancellative)
 open import Relation.Binary
+open import Relation.Nullary using (¬_)
+open import Relation.Nullary.Negation using (contradiction)
 open import Level using (Level; _⊔_; suc)
 open import Data.Product
 open import Data.Sum
-open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
+open import Relation.Binary.PropositionalEquality as ℙ using (_≡_) renaming (refl to ≡-refl)
 open import Function using (_$_)
 
 module Structures where
@@ -30,6 +32,12 @@ record Currency ℓ₁ ℓ₂ : Set (suc (ℓ₁ ⊔ ℓ₂)) where
     isCommutativeRing : IsCommutativeRing _≈_ _+_ _*_ -_ 0# 1#
     +-mono-≤ : _+_ Preserves₂ _≤_ ⟶ _≤_ ⟶ _≤_
     zeroProduct : ∀ {a b} → a * b ≈ 0# → a ≈ 0# ⊎ b ≈ 0#
+
+  _≰_ : Rel A ℓ₂
+  x ≰ y = ¬ (x ≤ y)
+
+  field
+    *-cancelˡ-≤-pos : ∀ {a b} → a ≰ 0# → 0# ≤ a * b → 0# ≤ b
 
   open IsCommutativeRing isCommutativeRing public
   open IsPartialOrder isPartialOrder public
@@ -81,12 +89,21 @@ module Integer where
     rewrite abs-◃ s (ℕ.suc n) with ℕₚ.m*n≡0⇒m≡0∨n≡0 ∣ a ∣ (abs-cong {s₂ = s} P)
   ... | inj₁ R = inj₁ (∣n∣≡0⇒n≡0 R)
 
+  *-cancelˡ-≤-pos' : ∀ {a b} → a ≰ +0 → +0 ≤ a * b → +0 ≤ b
+  *-cancelˡ-≤-pos' {+0} Pₐ P = contradiction P Pₐ
+  *-cancelˡ-≤-pos' {+[1+ n ]} {b} _ P = *-cancelˡ-≤-pos n _ _ $ begin
+    +[1+ n ] * +0 ≡⟨ *-zeroʳ +[1+ n ] ⟩
+    +0 ≤⟨ P ⟩
+    +[1+ n ] * b ∎ where open ≤-Reasoning
+  *-cancelˡ-≤-pos' { -[1+_] n} {b} Pₐ P = contradiction -≤+ Pₐ
+
   isCurrency : Σ[ c ∈ Currency _ _ ] Currency.A c ≡ ℤ
   isCurrency = (C , ≡-refl)
     where C = record { isCommutativeRing = +-*-isCommutativeRing
                      ; isPartialOrder = ≤-isPartialOrder
                      ; zeroProduct = zeroProduct
                      ; +-mono-≤ = +-mono-≤
+                     ; *-cancelˡ-≤-pos = *-cancelˡ-≤-pos'
                      }
 
 record Allotment ℓ ℓ₁ ℓ₂ : Set (suc (ℓ ⊔ ℓ₁ ⊔ ℓ₂)) where
