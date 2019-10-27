@@ -15,7 +15,7 @@ open import Function using (_|>_; _$_)
 open import Relation.Unary
 import Algebra.Morphism as M
 
-module SPE (ℂ : Currency ℓ ℓ₁ ℓ₂) (𝔸 : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
+module SPE (ℂ : Currency ℓ₁ ℓ₂) (𝔸 : Allotment ℓ ℓ₁ ℓ₂) (n : ℕ)
            {h : _} (H : M.IsRingMorphism (Allotment.ring 𝔸) (Currency.ring ℂ) h)
            (Feasible : Pred (Allotment.A 𝔸) ℓ)
            where
@@ -30,13 +30,13 @@ Valuation = Fin n → C -- TODO: is it possible to keep the non-negativity requi
 
 UtilityModel = Valuation → Bid → Utility
 
-DominantStrategy : (Bid → Utility) → Fin n → Pred C (ℓ ⊔ ℓ₂)
+DominantStrategy : (Bid → Utility) → Fin n → Pred C (ℓ₂)
 DominantStrategy um i bᵢ = ∀ (b₌ : Σ[ b ∈ Bid ] b i ≡ bᵢ) b → um b i ≤ um (proj₁ b₌) i
 
 DSIC : Pred (Valuation → Bid → Utility) _
 DSIC um = ∀ v i → DominantStrategy (um v) i (v i)
 
-Monotone : Pred (Bid → Allocation) (ℓ ⊔ ℓ₂)
+Monotone : Pred (Bid → Allocation) (ℓ₂)
 Monotone a = ∀ {i b₀ b₁} → b₀ i ≤ b₁ i
            → (proj₁ $ a b₀ i) ≤ᵃ (proj₁ $ a b₁ i)
 
@@ -61,17 +61,19 @@ record DirectRelevation : Set (suc (ℓ ⊔ ℓ₂)) where
     truthful : Pred (Fin n) ℓ₁
     truthful i = v i ≈ b i
 
+    open import Relation.Binary.Reasoning.PartialOrder poset
+
     nonNegativeUtility : (∀ i → p i ≤ (b i * a i))
                        → ∀ {i} → truthful i → 0# ≤ proj₁ quasiLinear v b i
-    nonNegativeUtility P {i} t rewrite proj₂ quasiLinear v b i =
-      let Q₀ = trans (+-identityʳ _) (*-congʳ t) in
-      let Q₁ = trans (+-cong refl (-‿inverseˡ _)) Q₀ in
-      let Q₂ = trans (+-assoc _ _ _) Q₁ in
-      ≤-respʳ-≈ (sym Q₂) (P i)
-        |> ≤-respˡ-≈ (sym $ +-identityˡ _)
-        |> proj₂ +-cancel-≤ _ _
+    nonNegativeUtility P {i} t = begin
+      0# ≈⟨ sym $ -‿inverseʳ _ ⟩
+      pᵢ + - pᵢ ≤⟨ +-mono-≤ (P i) ≤-refl ⟩
+      b i * aᵢ - pᵢ ≈⟨ +-cong (*-congʳ (sym t)) refl ⟩
+      v i * aᵢ - pᵢ ∎ where
+        pᵢ = payment b i
+        aᵢ = h (proj₁ (allocation b i))
 
-  Implementable : Set (ℓ ⊔ ℓ₂)
+  Implementable : Set (ℓ₂)
   Implementable = DSIC (proj₁ quasiLinear)
 
 module Myerson where
