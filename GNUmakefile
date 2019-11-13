@@ -2,6 +2,7 @@ all:
 	$(MAKE) -C agt
 	$(MAKE) -C hello
 	$(MAKE) -C fm
+	$(MAKE) -C bf
 
 DOCKER ?= docker
 DOCKER_REPO ?= 676237474471.dkr.ecr.eu-central-1.amazonaws.com/agda-hack

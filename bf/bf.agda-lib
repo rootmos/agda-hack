@@ -1,0 +1,4 @@
+depend:
+  standard-library
+include:
+  src
