@@ -1,6 +1,6 @@
 include ../common.mk
 
-$(eval $(call check, bf, src/bf.agda))
+$(eval $(call exe, bf, src/bf.agda))
 
 .PHONY: clean
 clean: .clean

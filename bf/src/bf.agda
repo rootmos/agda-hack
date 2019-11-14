@@ -6,28 +6,25 @@ open import Data.Bool using (Bool; not; true)
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Char using (Char)
-open import Data.Nat using (ℕ; _≟_; _+_) renaming (suc to nsuc)
+open import Data.Nat as ℕ using (ℕ; _≟_)
 open import Data.Vec as 𝕍 using (Vec)
 import Data.Vec.Categorical as 𝕍ᶜ
 open import Level using (Level; _⊔_; Lift) renaming (suc to lsuc)
 open import Data.Integer as ℤ using (ℤ)
 open import Data.Unit using (⊤; tt)
 open import Function using (_|>_; _$_; flip; id)
-open import Algebra using (Ring)
 open import Relation.Binary using (Rel)
 open import Relation.Nullary using (Dec; yes; no)
 open import Relation.Nullary.Decidable using (⌊_⌋)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Product as ℙ using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
-open import Data.Fin as 𝔽 using (Fin; 0F; _ℕ-_; _-_)
-open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; cong)
-
 import Data.Sum.Categorical.Left as ⊎
+open import Data.Product as ℙ using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
+open import Data.Fin as 𝔽 using (Fin; 0F)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
 
 private
   variable
     n m : ℕ
-    i j k l : ℤ
     ℓ ℓ₀ ℓ₁ : Level
 
 record Tape ℓ (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set (ℓ₀ ⊔ lsuc ℓ) where
@@ -110,7 +107,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
 
     private
       mk : Token → Fin n → Effect → Edge
-      mk t b e with n ≟ nsuc (𝔽.toℕ b)
+      mk t b e with n ≟ ℕ.suc (𝔽.toℕ b)
       ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just (b , t) }
       ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just (b , t) }
 
@@ -131,9 +128,9 @@ module Parser (value : Value ℓ₀ ℓ₁) where
 
   graph : Vec (Token n) n → Graph n
   graph {𝔽.0F} ts = record { edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
-  graph {nsuc n} ts = record { edges = edges }
+  graph {ℕ.suc n} ts = record { edges = edges }
     where es = 𝕍.zip ts (𝕍.tabulate id) |> 𝕍.map λ { (t , b) → interpretToken _ t b }
-          edges : L (nsuc n) → List (Edge (nsuc n))
+          edges : L (ℕ.suc n) → List (Edge (ℕ.suc n))
           edges (inj₁ _) = record { base = initial _ ; target = inj₂ 0F ; effect = noop ; source = nothing } ∷ []
           edges (inj₂ i) = 𝕍.lookup es i
 
@@ -146,3 +143,7 @@ module Interpreter (value : Value ℓ₀ ℓ₁) (F : ∀ {ℓ} → Set ℓ → 
       tape : Tape ℓ V F
       pointer : ℤ
       program : ∃[ n ] (L n × Graph n)
+
+module main where
+  open import IO
+  main = run (return 1)
