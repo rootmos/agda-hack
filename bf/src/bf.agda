@@ -178,25 +178,44 @@ module main where
 
   import Unix
 
+  data Action : Set where
+    debugLexer : Action
+    debugParser : Action
+    usageAction : Action
+
   record Settings : Set where
     field
+      action : Action
       programFilename : String
 
   usage : {a : Set} → Maybe String → IO a
   usage _ = Unix.exit (Unix.failure $ + 2)
 
   parseArgs : List String → IO Settings
-  parseArgs [] = usage nothing
-  parseArgs (x ∷ []) = return record { programFilename = x }
-  parseArgs (_ ∷ _ ∷ _) = usage nothing
+  parseArgs cs = go cs usageAction nothing
+    where go : List String → Action → Maybe String → IO Settings
+          go [] a _ = usage nothing
+          go (s ∷ cs) a _ with s 𝕊.≟ "--lexer"
+          go (s ∷ cs) _ obf | yes _ = go cs debugLexer obf
+          go (s ∷ cs) a _ | no _ with s 𝕊.≟ "--parser"
+          go (s ∷ cs) a obf | no _ | yes _ = go cs debugParser obf
+          go (s ∷ []) a _ | no _ | no _ = return (record { action = a ; programFilename = s })
+          go (s ∷ x ∷ cs) a obf | no ¬p | no ¬p₁ = usage nothing
 
   handleParserError : {v : Value ℓ ℓ₀} {a : Set} → Parser.Error v n ⊎ a → IO a
   handleParserError (inj₁ (Parser.unmatched c)) = Unix.die (printf "unmatched %c" c)
   handleParserError (inj₁ Parser.unimplemented) = Unix.die (printf "unimplemented")
   handleParserError (inj₂ a) = return a
 
+  runAction : Settings → String → IO _
+  runAction s raw with Settings.action s
+  runAction s raw | debugLexer = do
+    ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
+    run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts)
+  runAction s raw | debugParser = Unix.die "not implemented"
+  runAction s raw | usageAction = usage nothing
+
   main = do
     s ← Unix.getArgs >>= parseArgs
     raw ← readFiniteFile (Settings.programFilename s)
-    ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
-    run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts)
+    runAction s raw
