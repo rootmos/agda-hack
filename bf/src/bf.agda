@@ -6,13 +6,13 @@ open import Data.Bool using (Bool; not; true)
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Char using (Char)
-open import Data.Nat as ℕ using (ℕ; _≟_)
+open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
 open import Data.Vec as 𝕍 using (Vec)
 import Data.Vec.Categorical as 𝕍ᶜ
 open import Level using (Level; _⊔_; Lift) renaming (suc to lsuc)
-open import Data.Integer as ℤ using (ℤ)
+open import Data.Integer as ℤ using (ℤ; +_) renaming (_≟_ to _≟ℤ_)
 open import Data.Unit using (⊤; tt)
-open import Function using (_|>_; _$_; flip; id)
+open import Function using (_|>_; _$_; flip; id; _∘_)
 open import Relation.Binary using (Rel)
 open import Relation.Nullary using (Dec; yes; no)
 open import Relation.Nullary.Decidable using (⌊_⌋)
@@ -21,6 +21,8 @@ import Data.Sum.Categorical.Left as ⊎
 open import Data.Product as ℙ using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
 open import Data.Fin as 𝔽 using (Fin; 0F)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
+open import Data.String as 𝕊 using (String)
+open import Text.Printf using (printf)
 
 private
   variable
@@ -44,6 +46,15 @@ record Value ℓ c : Set (lsuc (c ⊔ ℓ)) where
 
   default : Maybe Carrier → Carrier
   default c = 𝕄.fromMaybe 0# c
+
+integer : Value _ _
+integer = record { Carrier = ℤ
+                 ; _≈_ = _≡_
+                 ; 0# = + 0
+                 ; _≈?0 = λ v → v ≟ℤ + 0
+                 ; suc = ℤ.suc
+                 ; pred = ℤ.pred
+                 }
 
 module Parser (value : Value ℓ₀ ℓ₁) where
   open Value value renaming (Carrier to V)
@@ -69,9 +80,20 @@ module Parser (value : Value ℓ₀ ℓ₁) where
       output : Token
       jz : Fin n → Token
       jnz : Fin n → Token
-      comment : Char -> Token
+      comment : Char → Token
 
-    token : Vec Char n → (Char × Fin n) -> Error ⊎ Token
+    showToken : Token → String
+    showToken inc = "inc"
+    showToken dec = "dec"
+    showToken left = "left"
+    showToken right = "right"
+    showToken input = "input"
+    showToken output = "output"
+    showToken (jz i) = printf "jz(%i)" (+ (𝔽.toℕ i))
+    showToken (jnz i) = printf "jnz(-%i)" (+ (𝔽.toℕ i))
+    showToken (comment c) = printf "%c" c
+
+    token : Vec Char n → (Char × Fin n) → Error ⊎ Token
     token cs ('+' , _) = inj₂ inc
     token cs ('-' , _) = inj₂ dec
     token cs ('<' , _) = inj₂ left
@@ -107,7 +129,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
 
     private
       mk : Token → Fin n → Effect → Edge
-      mk t b e with n ≟ ℕ.suc (𝔽.toℕ b)
+      mk t b e with n ≟ℕ ℕ.suc (𝔽.toℕ b)
       ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just (b , t) }
       ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just (b , t) }
 
@@ -145,5 +167,31 @@ module Interpreter (value : Value ℓ₀ ℓ₁) (F : ∀ {ℓ} → Set ℓ → 
       program : ∃[ n ] (L n × Graph n)
 
 module main where
-  open import IO
-  main = run (return 1)
+  open import IO using (lift; run; sequence′; putStrLn)
+  open import IO.Primitive hiding (putStrLn)
+  open import Codata.Musical.Notation
+  import Codata.Musical.Colist as 𝕃ᶜ
+
+  import Unix
+
+  record Settings : Set where
+    field
+      programFilename : String
+
+  usage : {a : Set} → Maybe String → IO a
+  usage _ = Unix.exit (Unix.failure $ + 2)
+
+  parseArgs : List String → IO Settings
+  parseArgs [] = usage nothing
+  parseArgs (x ∷ []) = return record { programFilename = x }
+  parseArgs (_ ∷ _ ∷ _) = usage nothing
+
+  handleParserError : {v : Value ℓ ℓ₀} {a : Set} → Parser.Error v n ⊎ a → IO a
+  handleParserError (inj₁ (Parser.unmatched c)) = Unix.die (printf "unmatched %c" c)
+  handleParserError (inj₂ a) = return a
+
+  main = do
+    s ← (Unix.getArgs >>= λ as → parseArgs as)
+    raw ← readFiniteFile (Settings.programFilename s)
+    ts ← handleParserError (Parser.tokenize integer _ (𝕊.toVec raw))
+    run $ sequence′ (𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts))

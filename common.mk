@@ -14,7 +14,7 @@ $$(BUILD)/$(strip $(1)):
 
 .PHONY: run
 run: $$(BUILD)/$(strip $(1))
-	@$$(BUILD)/$(strip $(1))
+	$$(BUILD)/$(strip $(1)) $$(ARGS)
 endef
 
 define check
