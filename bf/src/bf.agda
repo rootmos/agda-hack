@@ -7,6 +7,7 @@ open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Char using (Char)
 open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
+import Data.Nat.Properties as ℕᵖ
 open import Data.Vec as 𝕍 using (Vec)
 import Data.Vec.Categorical as 𝕍ᶜ
 open import Level using (Level; _⊔_; Lift) renaming (suc to lsuc)
@@ -70,6 +71,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
   module _ n where
     data Error : Set where
       unmatched : Char → Error
+      unimplemented : Error
 
     data Token : Set ℓ₀ where
       inc : Token
@@ -90,7 +92,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
     showToken input = "input"
     showToken output = "output"
     showToken (jz i) = printf "jz(%i)" (+ (𝔽.toℕ i))
-    showToken (jnz i) = printf "jnz(-%i)" (+ (𝔽.toℕ i))
+    showToken (jnz i) = printf "jnz(%i)" (+ (𝔽.toℕ i))
     showToken (comment c) = printf "%c" c
 
     token : Vec Char n → (Char × Fin n) → Error ⊎ Token
@@ -101,13 +103,16 @@ module Parser (value : Value ℓ₀ ℓ₁) where
     token cs (',' , _) = inj₂ input
     token cs ('.' , _) = inj₂ output
     token cs ('[' , i) with jz | unmatched '['
-    ... | J | E rewrite proj₂ (𝕌.splitℕ i) =
+    ... | J | E rewrite proj₂ (𝕌.excSplitℕ i) =
       𝕌.match 𝕌.square (𝕍.drop (𝔽.toℕ i) cs) |>
         𝕄.maybe′ (λ j → inj₂ $ J (𝔽.raise _ j)) (inj₁ E)
-    token cs (']' , i) with jnz | unmatched ']'
-    ... | J | E rewrite proj₂ (𝕌.splitℕ i) =
-      𝕌.match (𝕌.flip 𝕌.square) (𝕍.reverse $ 𝕍.take (𝔽.toℕ i) cs) |>
-        𝕄.maybe′ (λ j → inj₂ $ J (𝔽.inject+ _ {- TODO: reverse the index -} j)) (inj₁ E)
+    token cs (']' , i) with jnz | unmatched ']' | 𝕌.incSplitℕ i
+    ... | J | E | (k , P) rewrite P =
+      𝕌.match (𝕌.flip 𝕌.square) (𝕍.reverse $ 𝕍.take _ cs) |>
+        𝕄.maybe′ (inj₂ ∘ J ∘ go) (inj₁ E)
+        where go : Fin (ℕ.suc (𝔽.toℕ i)) → Fin (ℕ.suc (𝔽.toℕ i ℕ.+ k))
+              go j with 𝔽.inject+ (𝔽.toℕ j) ((𝔽.toℕ i) 𝔽.ℕ- j)
+              ... | l rewrite ℕᵖ.m∸n+n≡m (𝕌.toℕ-≤ j) = 𝔽.inject+ k l
     token cs (c , _) = inj₂ $ comment c
 
     tokenize : Vec Char n -> Error ⊎ Vec Token n
@@ -169,7 +174,6 @@ module Interpreter (value : Value ℓ₀ ℓ₁) (F : ∀ {ℓ} → Set ℓ → 
 module main where
   open import IO using (lift; run; sequence′; putStrLn)
   open import IO.Primitive hiding (putStrLn)
-  open import Codata.Musical.Notation
   import Codata.Musical.Colist as 𝕃ᶜ
 
   import Unix
@@ -188,10 +192,11 @@ module main where
 
   handleParserError : {v : Value ℓ ℓ₀} {a : Set} → Parser.Error v n ⊎ a → IO a
   handleParserError (inj₁ (Parser.unmatched c)) = Unix.die (printf "unmatched %c" c)
+  handleParserError (inj₁ Parser.unimplemented) = Unix.die (printf "unimplemented")
   handleParserError (inj₂ a) = return a
 
   main = do
-    s ← (Unix.getArgs >>= λ as → parseArgs as)
+    s ← Unix.getArgs >>= parseArgs
     raw ← readFiniteFile (Settings.programFilename s)
-    ts ← handleParserError (Parser.tokenize integer _ (𝕊.toVec raw))
-    run $ sequence′ (𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts))
+    ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
+    run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts)

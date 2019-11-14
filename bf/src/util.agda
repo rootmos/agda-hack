@@ -43,6 +43,16 @@ match {A} {suc n} p as = go 0 (𝕍.zip as (𝕍.tabulate id))
         go (suc (suc l)) (_ ∷ xs) | just cl = go (suc l) xs
         go l (_ ∷ xs) | nothing = go l xs
 
-splitℕ : ∀ {n} → (i : Fin n) → Σ[ j ∈ ℕ ] n ≡ 𝔽.toℕ i + j
-splitℕ {suc n} 0F = suc n , refl
-splitℕ {suc n} (𝔽.suc i) = ℙ.map₂ (cong suc) (splitℕ i)
+excSplitℕ : ∀ {n} → (i : Fin n) → Σ[ j ∈ ℕ ] n ≡ 𝔽.toℕ i + j
+excSplitℕ {suc n} 0F = suc n , refl
+excSplitℕ {suc n} (𝔽.suc i) = ℙ.map₂ (cong suc) (excSplitℕ i)
+
+incSplitℕ : ∀ {n} → (i : Fin n) → Σ[ j ∈ ℕ ] n ≡ (suc (𝔽.toℕ i)) + j
+incSplitℕ {suc n} 0F = n , refl
+incSplitℕ {suc n} (𝔽.suc i) = ℙ.map₂ (cong suc) (incSplitℕ i)
+
+module _ where
+  open import Data.Nat
+  toℕ-≤ : ∀ {n} → (i : Fin n) → 𝔽.toℕ i ≤ n
+  toℕ-≤ 0F = z≤n
+  toℕ-≤ (𝔽.suc i) = s≤s (toℕ-≤ i)
