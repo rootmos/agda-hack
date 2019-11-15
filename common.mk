@@ -14,7 +14,11 @@ $$(BUILD)/$(strip $(1)):
 
 .PHONY: run
 run: $$(BUILD)/$(strip $(1))
-	$$(BUILD)/$(strip $(1)) $$(ARGS)
+ifeq ($$(wildcard .args),)
+	$$(BUILD)/$(strip $(1))
+else
+	$$(BUILD)/$(strip $(1)) $$(shell cat .args)
+endif
 endef
 
 define check

@@ -7,10 +7,11 @@ open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Char using (Char)
 open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
+open import Data.Nat.Show renaming (show to showℕ)
 import Data.Nat.Properties as ℕᵖ
 open import Data.Vec as 𝕍 using (Vec)
 import Data.Vec.Categorical as 𝕍ᶜ
-open import Level using (Level; _⊔_; Lift) renaming (suc to lsuc)
+open import Level using (Level; _⊔_; Lift; lift) renaming (suc to lsuc)
 open import Data.Integer as ℤ using (ℤ; +_) renaming (_≟_ to _≟ℤ_)
 open import Data.Unit using (⊤; tt)
 open import Function using (_|>_; _$_; flip; id; _∘_)
@@ -29,6 +30,23 @@ private
   variable
     n m : ℕ
     ℓ ℓ₀ ℓ₁ : Level
+
+  show𝔽 : Fin n → String
+  show𝔽 = showℕ ∘ 𝔽.toℕ
+
+  show𝕍 : {A : Set ℓ} → (A → String) → Vec A n → String
+  show𝕍 showA 𝕍.[] = printf "[]"
+  show𝕍 {_} {_} {A} showA as@(_ 𝕍.∷ _) = go "[" as
+    where go : String → Vec A (ℕ.suc n) → String
+          go acc (a 𝕍.∷ 𝕍.[]) = printf "%s%s]" acc (showA a)
+          go acc (a 𝕍.∷ bs@(_ 𝕍.∷ _)) = go (printf "%s%s, " acc (showA a)) bs
+
+  show𝕃 : {A : Set ℓ} → (A → String) → List A → String
+  show𝕃 {_} {A} showA = go "["
+    where go : String → List A → String
+          go acc [] = printf "%s]" acc
+          go acc (a ∷ []) = printf "%s%s]" acc (showA a)
+          go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
 
 record Tape ℓ (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set (ℓ₀ ⊔ lsuc ℓ) where
  field
@@ -67,6 +85,14 @@ module Parser (value : Value ℓ₀ ℓ₁) where
     op : (V → V) → Effect
     pointer : (ℤ → ℤ) → Effect
     cond : (V → Bool) → Effect
+
+  showEffect : Effect → String
+  showEffect noop = "noop"
+  showEffect input = "input"
+  showEffect output = "output"
+  showEffect (op _) = "op"
+  showEffect (pointer _) = "pointer"
+  showEffect (cond _) = "cond"
 
   module _ n where
     data Error : Set where
@@ -120,6 +146,11 @@ module Parser (value : Value ℓ₀ ℓ₁) where
       where module M = 𝕍ᶜ.TraversableA {ℓ₀} {n} (⊎.applicative Error ℓ₀)
 
     L = ⊤ ⊎ Fin n
+
+    showLabel : L → String
+    showLabel (inj₁ tt) = "∙"
+    showLabel (inj₂ i) = show𝔽 i
+
     terminal : L
     terminal = inj₁ tt
 
@@ -131,6 +162,12 @@ module Parser (value : Value ℓ₀ ℓ₁) where
         base target : L
         effect : Effect
         source : Maybe (Fin n × Token)
+
+    showEdge : Edge → String
+    showEdge record { base = b ; target = t ; effect = e ; source = just (i , k)} =
+      printf "%s→%s %s (%s) %s" (showLabel b) (showLabel t) (showEffect e) (show𝔽 i) (showToken k)
+    showEdge record { base = b ; target = t ; effect = e ; source = nothing } =
+      printf "%s→%s %s" (showLabel b) (showLabel t) (showEffect e)
 
     private
       mk : Token → Fin n → Effect → Edge
@@ -153,6 +190,9 @@ module Parser (value : Value ℓ₀ ℓ₁) where
       field
         edges : L → List Edge
 
+    labels : Vec L (ℕ.suc n)
+    labels = initial 𝕍.∷ 𝕍.tabulate inj₂
+
   graph : Vec (Token n) n → Graph n
   graph {𝔽.0F} ts = record { edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
   graph {ℕ.suc n} ts = record { edges = edges }
@@ -160,6 +200,16 @@ module Parser (value : Value ℓ₀ ℓ₁) where
           edges : L (ℕ.suc n) → List (Edge (ℕ.suc n))
           edges (inj₁ _) = record { base = initial _ ; target = inj₂ 0F ; effect = noop ; source = nothing } ∷ []
           edges (inj₂ i) = 𝕍.lookup es i
+
+  showGraph : Graph n → String
+  showGraph {n} g = goG "{" $ labels n
+    where goL : L n → String
+          goL = show𝕃 (showEdge _) ∘ Graph.edges g
+          goG : String → Vec (L n) m → String
+          goG acc 𝕍.[] = printf "%s}" acc
+          goG acc (l 𝕍.∷ 𝕍.[]) = printf "%s%s: %s}" acc (showLabel _ l) (goL l)
+          goG acc (l 𝕍.∷ ls@(_ 𝕍.∷ _)) =
+            goG (printf "%s%s: %s, " acc (showLabel _ l) (goL l)) ls
 
 module Interpreter (value : Value ℓ₀ ℓ₁) (F : ∀ {ℓ} → Set ℓ → Set ℓ) where
   open Value value renaming (Carrier to V)
@@ -212,7 +262,11 @@ module main where
   runAction s raw | debugLexer = do
     ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
     run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts)
-  runAction s raw | debugParser = Unix.die "not implemented"
+  runAction s raw | debugParser = do
+    ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
+    let g = Parser.graph integer ts
+    run (putStrLn $ Parser.showGraph _ g) >>= return ∘ lift
+
   runAction s raw | usageAction = usage nothing
 
   main = do
