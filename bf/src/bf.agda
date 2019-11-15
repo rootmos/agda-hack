@@ -9,7 +9,7 @@ open import Data.Char using (Char)
 open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
 open import Data.Nat.Show renaming (show to showℕ)
 import Data.Nat.Properties as ℕᵖ
-open import Data.Vec as 𝕍 using (Vec)
+open import Data.Vec as 𝕍 using (Vec; []; _∷_)
 import Data.Vec.Categorical as 𝕍ᶜ
 open import Level using (Level; _⊔_; Lift; lift) renaming (suc to lsuc)
 open import Data.Integer as ℤ using (ℤ; +_) renaming (_≟_ to _≟ℤ_)
@@ -35,11 +35,11 @@ private
   show𝔽 = showℕ ∘ 𝔽.toℕ
 
   show𝕍 : {A : Set ℓ} → (A → String) → Vec A n → String
-  show𝕍 showA 𝕍.[] = printf "[]"
-  show𝕍 {_} {_} {A} showA as@(_ 𝕍.∷ _) = go "[" as
+  show𝕍 showA [] = printf "[]"
+  show𝕍 {_} {_} {A} showA as@(_ ∷ _) = go "[" as
     where go : String → Vec A (ℕ.suc n) → String
-          go acc (a 𝕍.∷ 𝕍.[]) = printf "%s%s]" acc (showA a)
-          go acc (a 𝕍.∷ bs@(_ 𝕍.∷ _)) = go (printf "%s%s, " acc (showA a)) bs
+          go acc (a ∷ []) = printf "%s%s]" acc (showA a)
+          go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
 
   show𝕃 : {A : Set ℓ} → (A → String) → List A → String
   show𝕃 {_} {A} showA = go "["
@@ -201,7 +201,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
         edges : L → List Edge
 
     labels : Vec L (ℕ.suc n)
-    labels = initial 𝕍.∷ 𝕍.tabulate inj₂
+    labels = initial ∷ 𝕍.tabulate inj₂
 
   graph : Vec (Token n) n → Graph n
   graph {𝔽.0F} ts = record { edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
@@ -216,9 +216,9 @@ module Parser (value : Value ℓ₀ ℓ₁) where
     where goL : L n → String
           goL = show𝕃 (showEdge _) ∘ Graph.edges g
           goG : String → Vec (L n) m → String
-          goG acc 𝕍.[] = printf "%s}" acc
-          goG acc (l 𝕍.∷ 𝕍.[]) = printf "%s%s: %s}" acc (showLabel _ l) (goL l)
-          goG acc (l 𝕍.∷ ls@(_ 𝕍.∷ _)) =
+          goG acc [] = printf "%s}" acc
+          goG acc (l ∷ []) = printf "%s%s: %s}" acc (showLabel _ l) (goL l)
+          goG acc (l ∷ ls@(_ ∷ _)) =
             goG (printf "%s%s: %s, " acc (showLabel _ l) (goL l)) ls
 
 module Interpreter (value : Value ℓ₀ ℓ₁) (F : ∀ {ℓ} → Set ℓ → Set ℓ) where
@@ -282,6 +282,4 @@ module main where
     run (putStrLn $ Parser.showGraph _ g) >>= return ∘ lift
   runAction s | usageAction = usage nothing
 
-  main = do
-    s ← Unix.getArgs >>= parseArgs
-    runAction s
+  main = Unix.getArgs >>= parseArgs >>= runAction
