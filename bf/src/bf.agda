@@ -2,7 +2,7 @@ module bf where
 
 import util as 𝕌
 
-open import Data.Bool using (Bool; not; true)
+open import Data.Bool using (Bool; not; true; false)
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Char using (Char)
@@ -25,6 +25,7 @@ open import Data.Fin as 𝔽 using (Fin; 0F)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
 open import Data.String as 𝕊 using (String)
 open import Text.Printf using (printf)
+open import Category.Monad using (RawMonad)
 
 private
   variable
@@ -48,11 +49,10 @@ private
           go acc (a ∷ []) = printf "%s%s]" acc (showA a)
           go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
 
-record Tape ℓ (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set (ℓ₀ ⊔ lsuc ℓ) where
+record Tape (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set ℓ₀ where
  field
-    Carrier : Set ℓ
-    get : Carrier → ℤ → F (Maybe V)
-    set : Carrier → ℤ → V → F (Lift ℓ₀ ⊤)
+    get : ℤ → F (Maybe V)
+    set : ℤ → V → F (Lift ℓ₀ ⊤)
 
 record Value ℓ c : Set (lsuc (c ⊔ ℓ)) where
   field
@@ -238,15 +238,55 @@ module Parser (value : Value ℓ₀ ℓ₁) where
           goG acc (l ∷ ls@(_ ∷ _)) =
             goG (printf "%s%s: %s, " acc (showLabel l) (goL l)) ls
 
-module Interpreter (value : Value ℓ₀ ℓ₁) (F : ∀ {ℓ} → Set ℓ → Set ℓ) where
+module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → Set ℓ} (F : ∀ {ℓ} → RawMonad {ℓ} f) where
   open Value value renaming (Carrier to V)
-  open Parser value using (Graph; Label)
+  open Parser value using (Graph; Label; Edge)
 
-  record State ℓ : Set (lsuc (ℓ ⊔ ℓ₀)) where
+  record State : Set ℓ₀ where
     field
-      tape : Tape ℓ V F
+      tape : Tape V f
       pointer : ℤ
-      program : ∃[ n ] Label n × Graph
+      program : Σ[ g ∈ Graph ] Label (Graph.size g)
+
+  module _ (s : State) where
+    private
+      g = (proj₁ $ State.program s)
+      size = Graph.size g
+
+    goto : Label size → State
+    goto l = record s { program = g , l }
+
+  record IOHandlers : Set ℓ₀ where
+    field
+      input : ⊤ → f V
+      output : V → f (Lift ℓ₀ ⊤)
+
+  step : IOHandlers → State → f State
+  step io s = go (Graph.edges g (proj₂ $ State.program s))
+    where g = proj₁ (State.program s)
+          size = Graph.size g
+          open RawMonad {ℓ₀} F
+          go : List (Edge size) → f State
+          go [] = return s
+          go (e ∷ _) with Edge.effect e
+          go (e ∷ _) | Parser.noop = return (goto s $ Edge.target e)
+          go (e ∷ _) | Parser.input =
+            IOHandlers.input io tt >>= Tape.set (State.tape s) (State.pointer s) >>
+            return (goto s $ Edge.target e)
+          go (e ∷ _) | Parser.output =
+            default <$> Tape.get (State.tape s) (State.pointer s) >>= IOHandlers.output io >>
+            return (goto s $ Edge.target e)
+          go (e ∷ _) | Parser.op o =
+            default <$> Tape.get (State.tape s) (State.pointer s) >>=
+            Tape.set (State.tape s) (State.pointer s) ∘ o >>
+            return (goto s (Edge.target e))
+          go (e ∷ _) | Parser.pointer p =
+            return (goto record s { pointer = p $ State.pointer s } $ Edge.target e)
+          go (e ∷ es) | Parser.cond c =
+            default <$> Tape.get (State.tape s) (State.pointer s) >>= cond ∘ c
+              where cond : Bool → f State
+                    cond false = go es
+                    cond true = return (goto s $ Edge.target e)
 
 module main where
   open import IO using (lift; run; sequence′; putStrLn)
