@@ -75,6 +75,15 @@ integer = record { Carrier = ℤ
                  ; pred = ℤ.pred
                  }
 
+record SourceLocation : Set where
+  constructor _,_
+  field
+    filename : String
+    offset : ℕ
+
+showSourceLocation : SourceLocation → String
+showSourceLocation (fn , i) = printf "%s:%i" fn (+ i)
+
 module Parser (value : Value ℓ₀ ℓ₁) where
   open Value value renaming (Carrier to V)
 
@@ -100,50 +109,51 @@ module Parser (value : Value ℓ₀ ℓ₁) where
       unimplemented : Error
 
     data Token : Set ℓ₀ where
-      inc : Token
-      dec : Token
-      left : Token
-      right : Token
-      input : Token
-      output : Token
-      jz : Fin n → Token
-      jnz : Fin n → Token
-      comment : Char → Token
+      inc : SourceLocation → Token
+      dec : SourceLocation → Token
+      left : SourceLocation → Token
+      right : SourceLocation → Token
+      input : SourceLocation → Token
+      output : SourceLocation → Token
+      jz : Fin n → SourceLocation → Token
+      jnz : Fin n → SourceLocation → Token
+      comment : Char → SourceLocation → Token
 
     showToken : Token → String
-    showToken inc = "inc"
-    showToken dec = "dec"
-    showToken left = "left"
-    showToken right = "right"
-    showToken input = "input"
-    showToken output = "output"
-    showToken (jz i) = printf "jz(%i)" (+ (𝔽.toℕ i))
-    showToken (jnz i) = printf "jnz(%i)" (+ (𝔽.toℕ i))
-    showToken (comment c) = printf "%c" c
+    showToken (inc l) = printf "inc (%s)" (showSourceLocation l)
+    showToken (dec l) = printf "dec (%s)" (showSourceLocation l)
+    showToken (left l) = printf "left (%s)" (showSourceLocation l)
+    showToken (right l) = printf "right (%s)" (showSourceLocation l)
+    showToken (input l) = printf "input (%s)" (showSourceLocation l)
+    showToken (output l) = printf "output (%s)" (showSourceLocation l)
+    showToken (jz i l) = printf "jz(%i) (%s)" (+ (𝔽.toℕ i)) (showSourceLocation l)
+    showToken (jnz i l) = printf "jnz(%i) (%s)" (+ (𝔽.toℕ i)) (showSourceLocation l)
+    showToken (comment c l) = printf "%c (%s)" c (showSourceLocation l)
 
-    token : Vec Char n → (Char × Fin n) → Error ⊎ Token
-    token cs ('+' , _) = inj₂ inc
-    token cs ('-' , _) = inj₂ dec
-    token cs ('<' , _) = inj₂ left
-    token cs ('>' , _) = inj₂ right
-    token cs (',' , _) = inj₂ input
-    token cs ('.' , _) = inj₂ output
-    token cs ('[' , i) with jz | unmatched '['
+    token : Vec Char n → (Char × Fin n × SourceLocation) → Error ⊎ Token
+    token cs ('+' , _ , l) = inj₂ (inc l)
+    token cs ('-' , _ , l) = inj₂ (dec l)
+    token cs ('<' , _ , l) = inj₂ (left l)
+    token cs ('>' , _ , l) = inj₂ (right l)
+    token cs (',' , _ , l) = inj₂ (input l)
+    token cs ('.' , _ , l) = inj₂ (output l)
+    token cs ('[' , i , l) with jz | unmatched '['
     ... | J | E rewrite proj₂ (𝕌.excSplitℕ i) =
       𝕌.match 𝕌.square (𝕍.drop (𝔽.toℕ i) cs) |>
-        𝕄.maybe′ (λ j → inj₂ $ J (𝔽.raise _ j)) (inj₁ E)
-    token cs (']' , i) with jnz | unmatched ']' | 𝕌.incSplitℕ i
+        𝕄.maybe′ (λ j → inj₂ $ J (𝔽.raise _ j) l) (inj₁ E)
+    token cs (']' , i , l) with jnz | unmatched ']' | 𝕌.incSplitℕ i
     ... | J | E | (k , P) rewrite P =
       𝕌.match (𝕌.flip 𝕌.square) (𝕍.reverse $ 𝕍.take _ cs) |>
-        𝕄.maybe′ (inj₂ ∘ J ∘ go) (inj₁ E)
+        𝕄.maybe′ (inj₂ ∘ flip J l ∘ go) (inj₁ E)
         where go : Fin (ℕ.suc (𝔽.toℕ i)) → Fin (ℕ.suc (𝔽.toℕ i ℕ.+ k))
               go j with 𝔽.inject+ (𝔽.toℕ j) ((𝔽.toℕ i) 𝔽.ℕ- j)
               ... | l rewrite ℕᵖ.m∸n+n≡m (𝕌.toℕ-≤ j) = 𝔽.inject+ k l
-    token cs (c , _) = inj₂ $ comment c
+    token cs (c , _ , l) = inj₂ $ comment c l
 
-    tokenize : Vec Char n -> Error ⊎ Vec Token n
-    tokenize cs = M.sequenceA $ 𝕍.map (token cs) (𝕍.zip cs $ 𝕍.tabulate id)
+    tokenize : String → Vec Char n -> Error ⊎ Vec Token n
+    tokenize fn cs = M.sequenceA $ 𝕍.map (token cs) src
       where module M = 𝕍ᶜ.TraversableA {ℓ₀} {n} (⊎.applicative Error ℓ₀)
+            src = 𝕍.zip cs $ 𝕍.map (λ i → i , fn , 𝔽.toℕ i) $ 𝕍.tabulate id
 
     L = ⊤ ⊎ Fin n
 
@@ -161,30 +171,30 @@ module Parser (value : Value ℓ₀ ℓ₁) where
       field
         base target : L
         effect : Effect
-        source : Maybe (Fin n × Token)
+        source : Maybe Token
 
     showEdge : Edge → String
-    showEdge record { base = b ; target = t ; effect = e ; source = just (i , k)} =
-      printf "%s→%s %s (%s) %s" (showLabel b) (showLabel t) (showEffect e) (show𝔽 i) (showToken k)
+    showEdge record { base = b ; target = t ; effect = e ; source = just k} =
+      printf "%s→%s %s %s" (showLabel b) (showLabel t) (showEffect e) (showToken k)
     showEdge record { base = b ; target = t ; effect = e ; source = nothing } =
       printf "%s→%s %s" (showLabel b) (showLabel t) (showEffect e)
 
     private
       mk : Token → Fin n → Effect → Edge
       mk t b e with n ≟ℕ ℕ.suc (𝔽.toℕ b)
-      ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just (b , t) }
-      ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just (b , t) }
+      ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just t }
+      ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just t }
 
     interpretToken : Token → Fin n → List Edge
-    interpretToken t@inc b = mk t b (op suc) ∷ []
-    interpretToken t@dec b = mk t b (op pred) ∷ []
-    interpretToken t@left b = mk t b (pointer ℤ.pred) ∷ []
-    interpretToken t@right b = mk t b (pointer ℤ.suc) ∷ []
-    interpretToken t@input b = mk t b input ∷ []
-    interpretToken t@output b = mk t b output ∷ []
-    interpretToken t@(comment x) b = mk t b noop ∷ []
-    interpretToken t@(jz T) b = record (mk t b $ cond $ λ v → ⌊ v ≈?0 ⌋) { target = inj₂ T } ∷ mk t b noop ∷ []
-    interpretToken t@(jnz T) b = record (mk t b $ cond $ λ v → not ⌊ v ≈?0 ⌋) { target = inj₂ T } ∷ mk t b noop ∷ []
+    interpretToken t@(inc _) b = mk t b (op suc) ∷ []
+    interpretToken t@(dec _) b = mk t b (op pred) ∷ []
+    interpretToken t@(left _) b = mk t b (pointer ℤ.pred) ∷ []
+    interpretToken t@(right _) b = mk t b (pointer ℤ.suc) ∷ []
+    interpretToken t@(input _) b = mk t b input ∷ []
+    interpretToken t@(output _) b = mk t b output ∷ []
+    interpretToken t@(comment _ _) b = mk t b noop ∷ []
+    interpretToken t@(jz T _) b = record (mk t b $ cond $ λ v → ⌊ v ≈?0 ⌋) { target = inj₂ T } ∷ mk t b noop ∷ []
+    interpretToken t@(jnz T _) b = record (mk t b $ cond $ λ v → not ⌊ v ≈?0 ⌋) { target = inj₂ T } ∷ mk t b noop ∷ []
 
     record Graph : Set ℓ₀ where
       field
@@ -257,19 +267,21 @@ module main where
   handleParserError (inj₁ Parser.unimplemented) = Unix.die (printf "unimplemented")
   handleParserError (inj₂ a) = return a
 
-  runAction : Settings → String → IO _
-  runAction s raw with Settings.action s
-  runAction s raw | debugLexer = do
-    ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
+  runAction : Settings → IO _
+  runAction s with Settings.action s
+  runAction s | debugLexer = do
+    let fn = (Settings.programFilename s)
+    raw ← readFiniteFile fn
+    ts ← handleParserError $ Parser.tokenize integer _ fn (𝕊.toVec raw)
     run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ Parser.showToken _ _) (𝕃ᶜ.fromList $ 𝕍.toList ts)
-  runAction s raw | debugParser = do
-    ts ← handleParserError $ Parser.tokenize integer _ (𝕊.toVec raw)
+  runAction s | debugParser = do
+    let fn = (Settings.programFilename s)
+    raw ← readFiniteFile fn
+    ts ← handleParserError $ Parser.tokenize integer _ fn (𝕊.toVec raw)
     let g = Parser.graph integer ts
     run (putStrLn $ Parser.showGraph _ g) >>= return ∘ lift
-
-  runAction s raw | usageAction = usage nothing
+  runAction s | usageAction = usage nothing
 
   main = do
     s ← Unix.getArgs >>= parseArgs
-    raw ← readFiniteFile (Settings.programFilename s)
-    runAction s raw
+    runAction s
