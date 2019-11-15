@@ -1,53 +1,35 @@
 module bf where
 
-import util as 𝕌
+import Util as 𝕌
 
+open import Category.Monad using (RawMonad)
 open import Data.Bool using (Bool; not; true; false)
-open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
-open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Char using (Char)
-open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
-open import Data.Nat.Show renaming (show to showℕ)
-import Data.Nat.Properties as ℕᵖ
-open import Data.Vec as 𝕍 using (Vec; []; _∷_)
-import Data.Vec.Categorical as 𝕍ᶜ
-open import Level using (Level; _⊔_; Lift; lift) renaming (suc to lsuc)
+open import Data.Fin as 𝔽 using (Fin; 0F)
 open import Data.Integer as ℤ using (ℤ; +_) renaming (_≟_ to _≟ℤ_)
-open import Data.Unit using (⊤; tt)
-open import Function using (_|>_; _$_; flip; id; _∘_)
-open import Relation.Binary using (Rel)
-open import Relation.Nullary using (Dec; yes; no)
-open import Relation.Nullary.Decidable using (⌊_⌋)
+open import Data.List as 𝕃 using (List; []; _∷_)
+open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
+open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
+import Data.Nat.Properties as ℕᵖ
+open import Data.Product as ℙ using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
+open import Data.String as 𝕊 using (String)
 open import Data.Sum using (_⊎_; inj₁; inj₂; map₂)
 import Data.Sum.Categorical.Left as ⊎
-open import Data.Product as ℙ using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
-open import Data.Fin as 𝔽 using (Fin; 0F)
+open import Data.Unit using (⊤; tt)
+open import Data.Vec as 𝕍 using (Vec; []; _∷_)
+import Data.Vec.Categorical as 𝕍ᶜ
+open import Function using (_|>_; _$_; flip; id; _∘_)
+open import Level using (Level; _⊔_; Lift; lift) renaming (suc to lsuc)
+open import Relation.Binary using (Rel)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
-open import Data.String as 𝕊 using (String)
+open import Relation.Nullary using (Dec; yes; no)
+open import Relation.Nullary.Decidable using (⌊_⌋)
 open import Text.Printf using (printf)
-open import Category.Monad using (RawMonad)
 
 private
   variable
     n m : ℕ
     ℓ ℓ₀ ℓ₁ : Level
-
-  show𝔽 : Fin n → String
-  show𝔽 = showℕ ∘ 𝔽.toℕ
-
-  show𝕍 : {A : Set ℓ} → (A → String) → Vec A n → String
-  show𝕍 showA [] = printf "[]"
-  show𝕍 {_} {_} {A} showA as@(_ ∷ _) = go "[" as
-    where go : String → Vec A (ℕ.suc n) → String
-          go acc (a ∷ []) = printf "%s%s]" acc (showA a)
-          go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
-
-  show𝕃 : {A : Set ℓ} → (A → String) → List A → String
-  show𝕃 {_} {A} showA = go "["
-    where go : String → List A → String
-          go acc [] = printf "%s]" acc
-          go acc (a ∷ []) = printf "%s%s]" acc (showA a)
-          go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
 
 record Tape (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set ℓ₀ where
  field
@@ -150,7 +132,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
 
   showLabel : Label n → String
   showLabel (inj₁ tt) = "∙"
-  showLabel (inj₂ i) = show𝔽 i
+  showLabel (inj₂ i) = 𝕌.show𝔽 i
 
   record Edge n : Set ℓ₀ where
     field
@@ -231,7 +213,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
   showGraph : Graph → String
   showGraph g = goG "{" $ (labels g)
     where goL : Label (Graph.size g) → String
-          goL = show𝕃 showEdge ∘ Graph.edges g
+          goL = 𝕌.show𝕃 showEdge ∘ Graph.edges g
           goG : String → Vec (Label (Graph.size g)) m → String
           goG acc [] = printf "%s}" acc
           goG acc (l ∷ []) = printf "%s%s: %s}" acc (showLabel l) (goL l)

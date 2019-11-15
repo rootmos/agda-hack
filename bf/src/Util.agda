@@ -1,17 +1,23 @@
-module util where
+module Util where
 
 open import Data.Bool using (Bool; true; false)
-open import Data.Nat as ℕ using (ℕ; _+_; suc; _≤_)
-open import Data.Vec as 𝕍 using (Vec; _∷_; [])
-open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.Fin as 𝔽 using (Fin; 0F)
+open import Data.List as 𝕃 using (List; _∷_; [])
+open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
+open import Data.Nat as ℕ using (ℕ; _+_; suc; _≤_)
+open import Data.Nat.Show as ℕˢ
 open import Data.Product as ℙ using (_×_; _,_; Σ-syntax)
-open import Function using (_$_; id)
+open import Data.String as 𝕊 using (String)
+open import Data.Vec as 𝕍 using (Vec; _∷_; [])
+open import Function using (_$_; id; _∘_)
+open import Level using (Level)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
+open import Text.Printf using (printf)
 
 private
   variable
     A : Set
+    ℓ : Level
 
 data Bracket : Set where
   op : Bracket
@@ -56,3 +62,22 @@ module _ where
   toℕ-≤ : ∀ {n} → (i : Fin n) → 𝔽.toℕ i ≤ n
   toℕ-≤ 0F = z≤n
   toℕ-≤ (𝔽.suc i) = s≤s (toℕ-≤ i)
+
+showℕ = ℕˢ.show
+
+show𝔽 : ∀ {n} → Fin n → String
+show𝔽 = showℕ ∘ 𝔽.toℕ
+
+show𝕍 : ∀ {n} {A : Set ℓ} → (A → String) → Vec A n → String
+show𝕍 showA [] = printf "[]"
+show𝕍 {_} {_} {A} showA as@(_ ∷ _) = go "[" as
+  where go : ∀ {n} → String → Vec A (ℕ.suc n) → String
+        go acc (a ∷ []) = printf "%s%s]" acc (showA a)
+        go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
+
+show𝕃 : {A : Set ℓ} → (A → String) → List A → String
+show𝕃 {_} {A} showA = go "["
+  where go : String → List A → String
+        go acc [] = printf "%s]" acc
+        go acc (a ∷ []) = printf "%s%s]" acc (showA a)
+        go acc (a ∷ bs@(_ ∷ _)) = go (printf "%s%s, " acc (showA a)) bs
