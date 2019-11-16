@@ -3,10 +3,12 @@ module bf where
 import Util as 𝕌
 
 open import Category.Monad using (RawMonad)
+open import Data.AVL.Map as Map using (Map)
 open import Data.Bool using (Bool; not; true; false)
-open import Data.Char using (Char)
-open import Data.Fin as 𝔽 using (Fin; 0F)
-open import Data.Integer as ℤ using (ℤ; +_) renaming (_≟_ to _≟ℤ_)
+open import Data.Char as ℂ using (Char)
+open import Data.Fin as 𝔽 using (Fin)
+open import Data.Integer as ℤ using (ℤ; +_; -[1+_]) renaming (_≟_ to _≟ℤ_)
+import Data.Integer.Properties as ℤᵖ
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
@@ -202,12 +204,12 @@ module Parser (value : Value ℓ₀ ℓ₁) where
     labels = initial s ∷ 𝕍.tabulate inj₂
 
   graph : Vec Token n → Error ⊎ Graph
-  graph {𝔽.0F} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
+  graph {0} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
   graph {n@(ℕ.suc _)} ts = map₂ (λ es → record { size = n ; edges = edges es }) $
     M.sequenceA $ 𝕍.zip ts (𝕍.tabulate id) |> 𝕍.map λ { (t , b) → interpretToken n ts t b }
       where module M = 𝕍ᶜ.TraversableA {ℓ₀} {n} (⊎.applicative Error ℓ₀)
             edges : Vec (List (Edge n)) n → Label n → List (Edge n)
-            edges _ (inj₁ _) = record { base = initial _ ; target = inj₂ 0F ; effect = noop ; source = nothing } ∷ []
+            edges _ (inj₁ _) = record { base = initial _ ; target = inj₂ 𝔽.zero ; effect = noop ; source = nothing } ∷ []
             edges es (inj₂ i) = 𝕍.lookup es i
 
   showGraph : Graph → String
@@ -223,6 +225,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
 module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → Set ℓ} (F : ∀ {ℓ} → RawMonad {ℓ} f) where
   open Value value renaming (Carrier to V)
   open Parser value using (Graph; Label; Edge)
+  open RawMonad {ℓ₀} F public
 
   record State : Set ℓ₀ where
     field
@@ -230,13 +233,20 @@ module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → 
       pointer : ℤ
       program : Σ[ g ∈ Graph ] Label (Graph.size g)
 
+  initial : Tape V f → Graph → State
+  initial t g = record { tape = t ; pointer = + 0 ; program = g , Parser.initial value _ }
+
   module _ (s : State) where
     private
       g = (proj₁ $ State.program s)
+      l = (proj₂ $ State.program s)
       size = Graph.size g
 
     goto : Label size → State
     goto l = record s { program = g , l }
+
+    showState : String
+    showState = printf "{ program = %s , %s }" (Parser.showGraph _ g) (Parser.showLabel value l)
 
   record IOHandlers : Set ℓ₀ where
     field
@@ -247,7 +257,6 @@ module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → 
   step io s = go (Graph.edges g (proj₂ $ State.program s))
     where g = proj₁ (State.program s)
           size = Graph.size g
-          open RawMonad {ℓ₀} F
           go : List (Edge size) → f State
           go [] = return s
           go (e ∷ _) with Edge.effect e
@@ -270,6 +279,14 @@ module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → 
                     cond false = go es
                     cond true = return (goto s $ Edge.target e)
 
+  {-# NON_TERMINATING #-}
+  run : IOHandlers → State → f State
+  run io s = step io s >>= halt?
+    where halt? : State → f State
+          halt? s′ with proj₂ $ State.program s′
+          halt? s′ | inj₁ tt = return s′
+          halt? s′ | inj₂ y = run io s′
+
 module main where
   open import IO using (lift; run; sequence′; putStrLn)
   open import IO.Primitive hiding (putStrLn)
@@ -281,6 +298,7 @@ module main where
     debugLexer : Action
     debugParser : Action
     usageAction : Action
+    interpret : Action
 
   record Settings : Set where
     field
@@ -291,7 +309,7 @@ module main where
   usage _ = Unix.exit (Unix.failure $ + 2)
 
   parseArgs : List String → IO Settings
-  parseArgs cs = go cs usageAction nothing
+  parseArgs cs = go cs interpret nothing
     where go : List String → Action → Maybe String → IO Settings
           go [] a _ = usage nothing
           go (s ∷ cs) a _ with s 𝕊.≟ "--lexer"
@@ -306,8 +324,26 @@ module main where
   handleParserError (inj₁ Parser.unimplemented) = Unix.die $ printf "unimplemented"
   handleParserError (inj₂ a) = return a
 
+  module I where
+    open Interpreter integer record { return = return; _>>=_ = _>>=_ } hiding (_>>=_) public
+
+    empty : ⊤ → IO (Tape ℤ IO)
+    empty tt = Unix.newIORef (Map.empty ℤᵖ.<-strictTotalOrder) <&> λ r →
+      record { get = λ k → Unix.readIORef r <&> Map.lookup _ k
+             ; set = λ k v →
+               Unix.readIORef r >>= Unix.writeIORef r ∘ Map.insert _ k v <&> lift
+             }
+
+    io : IOHandlers
+    io = record { input = λ _ → Unix.getChar <&> λ c → + ℂ.toℕ c
+                ; output = λ { (+ n) → lift <$> Unix.putChar (ℂ.fromℕ n)
+                             ; -[1+ n ] → Unix.die "cannot print negative values"
+                             }
+                }
+
   runAction : Settings → IO _
   runAction s with Settings.action s
+  runAction s | usageAction = usage nothing
   runAction s | debugLexer = do
     let fn = (Settings.programFilename s)
     raw ← readFiniteFile fn
@@ -318,6 +354,12 @@ module main where
     raw ← readFiniteFile fn
     g ← handleParserError $ Parser.graph integer $ Lexer.tokenize fn (𝕊.toVec raw)
     run (putStrLn $ Parser.showGraph _ g) >>= return ∘ lift
-  runAction s | usageAction = usage nothing
+  runAction s | interpret = do
+    let fn = (Settings.programFilename s)
+    raw ← readFiniteFile fn
+    g ← handleParserError $ Parser.graph integer $ Lexer.tokenize fn (𝕊.toVec raw)
+    t ← I.empty tt
+    _ ← I.run I.io (I.initial t g)
+    return (lift tt)
 
   main = Unix.getArgs >>= parseArgs >>= runAction

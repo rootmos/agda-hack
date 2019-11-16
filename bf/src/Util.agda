@@ -1,7 +1,7 @@
 module Util where
 
 open import Data.Bool using (Bool; true; false)
-open import Data.Fin as 𝔽 using (Fin; 0F)
+open import Data.Fin as 𝔽 using (Fin)
 open import Data.List as 𝕃 using (List; _∷_; [])
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.Nat as ℕ using (ℕ; _+_; suc; _≤_)
@@ -38,7 +38,7 @@ flip f a | just cl = just op
 flip f a | nothing = nothing
 
 match : ∀ {n} → (A → Maybe Bracket) → Vec A n → Maybe (Fin n)
-match {A} {0F} p as = nothing
+match {A} {0} p as = nothing
 match {A} {suc n} p as = go 0 (𝕍.zip as (𝕍.tabulate id))
   where go : ∀ {m} → ℕ → Vec (A × Fin (suc n)) m → Maybe (Fin (suc n))
         go l [] = nothing
@@ -50,17 +50,17 @@ match {A} {suc n} p as = go 0 (𝕍.zip as (𝕍.tabulate id))
         go l (_ ∷ xs) | nothing = go l xs
 
 excSplitℕ : ∀ {n} → (i : Fin n) → Σ[ j ∈ ℕ ] n ≡ 𝔽.toℕ i + j
-excSplitℕ {suc n} 0F = suc n , refl
+excSplitℕ {suc n} 𝔽.zero = suc n , refl
 excSplitℕ {suc n} (𝔽.suc i) = ℙ.map₂ (cong suc) (excSplitℕ i)
 
 incSplitℕ : ∀ {n} → (i : Fin n) → Σ[ j ∈ ℕ ] n ≡ (suc (𝔽.toℕ i)) + j
-incSplitℕ {suc n} 0F = n , refl
+incSplitℕ {suc n} 𝔽.zero = n , refl
 incSplitℕ {suc n} (𝔽.suc i) = ℙ.map₂ (cong suc) (incSplitℕ i)
 
 module _ where
   open import Data.Nat
   toℕ-≤ : ∀ {n} → (i : Fin n) → 𝔽.toℕ i ≤ n
-  toℕ-≤ 0F = z≤n
+  toℕ-≤ 𝔽.zero = z≤n
   toℕ-≤ (𝔽.suc i) = s≤s (toℕ-≤ i)
 
 showℕ = ℕˢ.show
