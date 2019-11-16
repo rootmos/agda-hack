@@ -335,7 +335,7 @@ module main where
              }
 
     io : IOHandlers
-    io = record { input = λ _ → Unix.getChar <&> λ c → + ℂ.toℕ c
+    io = record { input = λ _ → Unix.getChar <&> 𝕄.maybe′ (λ c → + ℂ.toℕ c) (+ 0)
                 ; output = λ { (+ n) → lift <$> Unix.putChar (ℂ.fromℕ n)
                              ; -[1+ n ] → Unix.die "cannot print negative values"
                              }

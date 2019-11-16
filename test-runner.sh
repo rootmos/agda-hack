@@ -80,8 +80,8 @@ $SHELL "$EXECDIR/$TEST_CASE.cmd" \
     < "$EXECDIR/$TEST_CASE.stdin" \
     1> "$EXECDIR/$TEST_CASE.stdout" \
     2> "$EXECDIR/$TEST_CASE.stderr"
-set -o errexit
 echo $? > "$EXECDIR/$TEST_CASE.exit-code"
+set -o errexit
 
 compare() {
     diff "$1" "$2" >/dev/null

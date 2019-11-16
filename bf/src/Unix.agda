@@ -3,24 +3,37 @@ module Unix where
 open import Data.Char using (Char)
 open import Data.Integer using (ℤ)
 open import Data.List using (List)
+open import Data.Maybe using (Maybe; just; nothing)
 open import Data.String using (String)
 open import Data.Unit using (⊤)
-open import IO.Primitive using (IO)
+open import IO.Primitive using (IO; _>>=_; return)
 
 {-# FOREIGN GHC import qualified System.Environment #-}
 {-# FOREIGN GHC import qualified System.Exit as E #-}
 {-# FOREIGN GHC import qualified Data.Text as T #-}
 {-# FOREIGN GHC import qualified Data.IORef as R #-}
-
+{-# FOREIGN GHC import qualified System.IO.Error as Err #-}
+{-# FOREIGN GHC import Control.Exception (catch) #-}
+{-# FOREIGN GHC import qualified Data.Bool as B #-}
 
 postulate
   getArgs : IO (List String)
-  getChar : IO Char
   putChar : Char → IO ⊤
 
 {-# COMPILE GHC getArgs = fmap (fmap T.pack) System.Environment.getArgs #-}
-{-# COMPILE GHC getChar = getChar #-}
 {-# COMPILE GHC putChar = putChar #-}
+
+private
+  data Maybe′ (a : Set) : Set where
+    some : a → Maybe′ a
+    none : Maybe′ a
+  {-# COMPILE GHC Maybe′ = data Maybe (Just | Nothing) #-}
+
+  postulate
+    getChar′ : IO (Maybe′ Char)
+
+{-# COMPILE GHC getChar′ = catch (Just <$> getChar) (\e -> B.bool (Err.ioError e) (return Nothing) (Err.isEOFError e)) #-}
+getChar = getChar′ >>= λ { (some a) → return (just a) ; none → return nothing }
 
 data ExitCode : Set where
   success : ExitCode
