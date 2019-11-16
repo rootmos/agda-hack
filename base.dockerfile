@@ -2,7 +2,7 @@ ARG HASKELL_VERSION=8.6.5
 FROM haskell:$HASKELL_VERSION
 
 ARG AGDA_VERSION=2.6.0.1
-ARG AGDA_STDLIB_VERSION=v1.1
+ARG AGDA_STDLIB_VERSION=v1.2
 
 RUN cabal update \
     && cabal install alex happy \
