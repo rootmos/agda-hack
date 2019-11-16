@@ -5,7 +5,7 @@ import Utils as U
 open import Agda.Builtin.Equality using (_≡_) renaming (refl to ≡-refl)
 open import Relation.Nullary
 open import Data.Nat using (ℕ)
-open import Data.Fin as F using (Fin; 0F)
+open import Data.Fin as F using (Fin)
 open import Data.Vec as V using (Vec; _∷_)
 open import Data.Vec.All as A using (All)
 open import Data.Product
