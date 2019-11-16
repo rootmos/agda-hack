@@ -1,6 +1,6 @@
 ARG BASE
 FROM $BASE
-ADD GNUmakefile common.mk ./
+ADD GNUmakefile common.mk test-runner.sh ./
 ADD agt agt
 ADD fm fm
 ADD bf bf

@@ -4,3 +4,4 @@
 *.agdai
 .*.vim
 build
+.tests*
