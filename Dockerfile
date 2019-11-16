@@ -5,4 +5,5 @@ ADD agt agt
 ADD fm fm
 ADD bf bf
 ADD hello hello
+ENV BUILD /tmp/build
 ENTRYPOINT ["make"]
