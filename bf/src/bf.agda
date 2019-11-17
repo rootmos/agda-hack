@@ -105,25 +105,39 @@ module Lexer where
   tokenize : String → Vec Char n -> Vec Token n
   tokenize fn cs = 𝕍.map token $ 𝕍.zip cs $ 𝕍.map (λ i → fn , 𝔽.toℕ i) $ 𝕍.tabulate id
 
-module Parser (value : Value ℓ₀ ℓ₁) where
-  open Value value renaming (Carrier to V)
+module Parser where
   open Lexer
 
-  data Effect : Set ℓ₀ where
+  data Op : Set where
+    inc : Op
+    dec : Op
+
+  data PtrArith : Set where
+    inc : PtrArith
+    dec : PtrArith
+
+  data Cond : Set where
+    z : Cond
+    nz : Cond
+
+  data Effect : Set where
     noop : Effect
     input : Effect
     output : Effect
-    op : (V → V) → Effect
-    pointer : (ℤ → ℤ) → Effect
-    cond : (V → Bool) → Effect
+    op : Op → Effect
+    pointer : PtrArith → Effect
+    cond : Cond → Effect
 
   showEffect : Effect → String
   showEffect noop = "noop"
   showEffect input = "input"
   showEffect output = "output"
-  showEffect (op _) = "op"
-  showEffect (pointer _) = "pointer"
-  showEffect (cond _) = "cond"
+  showEffect (op inc) = "op(inc)"
+  showEffect (op dec) = "op(dec)"
+  showEffect (pointer inc) = "pointer(inc)"
+  showEffect (pointer dec) = "pointer(dec)"
+  showEffect (cond z) = "cond(z)"
+  showEffect (cond nz) = "cond(nz)"
 
   data Error : Set where
     unmatched : Token → Error
@@ -136,7 +150,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
   showLabel (inj₁ tt) = "∙"
   showLabel (inj₂ i) = 𝕌.show𝔽 i
 
-  record Edge n : Set ℓ₀ where
+  record Edge n : Set where
     field
       base target : Label n
       effect : Effect
@@ -148,7 +162,7 @@ module Parser (value : Value ℓ₀ ℓ₁) where
   showEdge record { base = b ; target = t ; effect = e ; source = nothing } =
     printf "%s→%s %s" (showLabel b) (showLabel t) (showEffect e)
 
-  record Graph : Set ℓ₀ where
+  record Graph : Set where
     field
       size : ℕ
       edges : Label size → List (Edge size)
@@ -177,24 +191,33 @@ module Parser (value : Value ℓ₀ ℓ₁) where
       brackets _ = nothing
 
     interpretToken : Raw → Token → Fin n → Error ⊎ List E
-    interpretToken _ t@(inc _) b = inj₂ $ mk t b (op suc) ∷ []
-    interpretToken _ t@(dec _) b = inj₂ $ mk t b (op pred) ∷ []
-    interpretToken _ t@(left _) b = inj₂ $ mk t b (pointer ℤ.pred) ∷ []
-    interpretToken _ t@(right _) b = inj₂ $ mk t b (pointer ℤ.suc) ∷ []
+    interpretToken _ t@(inc _) b = inj₂ $ mk t b (op inc) ∷ []
+    interpretToken _ t@(dec _) b = inj₂ $ mk t b (op dec) ∷ []
+    interpretToken _ t@(left _) b = inj₂ $ mk t b (pointer inc) ∷ []
+    interpretToken _ t@(right _) b = inj₂ $ mk t b (pointer dec) ∷ []
     interpretToken _ t@(input _) b = inj₂ $ mk t b input ∷ []
     interpretToken _ t@(output _) b = inj₂ $ mk t b output ∷ []
     interpretToken _ t@(comment _ _) b = inj₂ $ mk t b noop ∷ []
     interpretToken raw t@(jz _) b with mk t b
     ... | mk′ rewrite proj₂ (𝕌.excSplitℕ b) =
       𝕌.match brackets (𝕍.drop (𝔽.toℕ b) raw) |> 𝕄.maybe′ f (inj₁ (unmatched t))
-        where f = λ j → inj₂ $ record (mk′ $ cond $ (λ v → ⌊ v ≈?0 ⌋)) { target = inj₂ (𝔽.raise _ j) } ∷ mk′ noop ∷ []
+        where f = λ j → inj₂ $ record (mk′ $ cond z) { target = inj₂ (𝔽.raise _ j) } ∷ mk′ noop ∷ []
     interpretToken raw t@(jnz _) b with mk t b
     ... | mk′ rewrite proj₂ (𝕌.incSplitℕ b) =
       𝕌.match (𝕌.flip brackets) (𝕍.reverse $ 𝕍.take _ raw) |> 𝕄.maybe′ f (inj₁ $ unmatched t)
         where go : ∀ k → Fin (ℕ.suc (𝔽.toℕ b)) → Fin (ℕ.suc (𝔽.toℕ b ℕ.+ k))
               go k j with 𝔽.inject+ (𝔽.toℕ j) (𝔽.toℕ b 𝔽.ℕ- j)
               ... | l rewrite ℕᵖ.m∸n+n≡m (𝕌.toℕ-≤ j) = 𝔽.inject+ k l
-              f = λ j → inj₂ $ record (mk′ $ cond $ λ v → not ⌊ v ≈?0 ⌋) { target = inj₂ $ go _ j } ∷ mk′ noop ∷ []
+              f = λ j → inj₂ $ record (mk′ $ cond nz) { target = inj₂ $ go _ j } ∷ mk′ noop ∷ []
+
+  graph : Vec Token n → Error ⊎ Graph
+  graph {0} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
+  graph {n@(ℕ.suc _)} ts = map₂ (λ es → record { size = n ; edges = edges es }) $
+    M.sequenceA $ 𝕍.zip ts (𝕍.tabulate id) |> 𝕍.map λ { (t , b) → interpretToken n ts t b }
+      where module M {ℓ} = 𝕍ᶜ.TraversableA {ℓ} {n} (⊎.applicative Error ℓ)
+            edges : Vec (List (Edge n)) n → Label n → List (Edge n)
+            edges _ (inj₁ _) = record { base = initial _ ; target = inj₂ 𝔽.zero ; effect = noop ; source = nothing } ∷ []
+            edges es (inj₂ i) = 𝕍.lookup es i
 
   module _ (g : Graph) where
     private
@@ -203,28 +226,19 @@ module Parser (value : Value ℓ₀ ℓ₁) where
     labels : Vec (Label s) (ℕ.suc s)
     labels = initial s ∷ 𝕍.tabulate inj₂
 
-  graph : Vec Token n → Error ⊎ Graph
-  graph {0} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
-  graph {n@(ℕ.suc _)} ts = map₂ (λ es → record { size = n ; edges = edges es }) $
-    M.sequenceA $ 𝕍.zip ts (𝕍.tabulate id) |> 𝕍.map λ { (t , b) → interpretToken n ts t b }
-      where module M = 𝕍ᶜ.TraversableA {ℓ₀} {n} (⊎.applicative Error ℓ₀)
-            edges : Vec (List (Edge n)) n → Label n → List (Edge n)
-            edges _ (inj₁ _) = record { base = initial _ ; target = inj₂ 𝔽.zero ; effect = noop ; source = nothing } ∷ []
-            edges es (inj₂ i) = 𝕍.lookup es i
-
-  showGraph : Graph → String
-  showGraph g = goG "{" $ (labels g)
-    where goL : Label (Graph.size g) → String
-          goL = 𝕌.show𝕃 showEdge ∘ Graph.edges g
-          goG : String → Vec (Label (Graph.size g)) m → String
-          goG acc [] = printf "%s}" acc
-          goG acc (l ∷ []) = printf "%s%s: %s}" acc (showLabel l) (goL l)
-          goG acc (l ∷ ls@(_ ∷ _)) =
-            goG (printf "%s%s: %s, " acc (showLabel l) (goL l)) ls
+    showGraph : String
+    showGraph = goG "{" $ labels
+      where goL : Label s → String
+            goL = 𝕌.show𝕃 showEdge ∘ Graph.edges g
+            goG : String → Vec (Label s) m → String
+            goG acc [] = printf "%s}" acc
+            goG acc (l ∷ []) = printf "%s%s: %s}" acc (showLabel l) (goL l)
+            goG acc (l ∷ ls@(_ ∷ _)) =
+              goG (printf "%s%s: %s, " acc (showLabel l) (goL l)) ls
 
 module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → Set ℓ} (F : ∀ {ℓ} → RawMonad {ℓ} f) where
   open Value value renaming (Carrier to V)
-  open Parser value using (Graph; Label; Edge)
+  open Parser using (Graph; Label; Edge)
   open RawMonad {ℓ₀} F public
 
   record State : Set ℓ₀ where
@@ -234,7 +248,7 @@ module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → 
       program : Σ[ g ∈ Graph ] Label (Graph.size g)
 
   initial : Tape V f → Graph → State
-  initial t g = record { tape = t ; pointer = + 0 ; program = g , Parser.initial value _ }
+  initial t g = record { tape = t ; pointer = + 0 ; program = g , Parser.initial _ }
 
   module _ (s : State) where
     private
@@ -246,12 +260,24 @@ module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → 
     goto l = record s { program = g , l }
 
     showState : String
-    showState = printf "{ program = %s , %s }" (Parser.showGraph _ g) (Parser.showLabel value l)
+    showState = printf "{ program = %s , %s }" (Parser.showGraph g) (Parser.showLabel l)
 
   record IOHandlers : Set ℓ₀ where
     field
       input : ⊤ → f V
       output : V → f (Lift ℓ₀ ⊤)
+
+  op : Parser.Op → V → V
+  op Parser.inc = suc
+  op Parser.dec = pred
+
+  ptrArith : Parser.PtrArith → ℤ → ℤ
+  ptrArith Parser.inc = ℤ.suc
+  ptrArith Parser.dec = ℤ.pred
+
+  cond : Parser.Cond → V → Bool
+  cond Parser.z v = ⌊ v ≈?0 ⌋
+  cond Parser.nz v = not ⌊ v ≈?0 ⌋
 
   step : IOHandlers → State → f State
   step io s = go (Graph.edges g (proj₂ $ State.program s))
@@ -269,15 +295,14 @@ module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → 
             return (goto s $ Edge.target e)
           go (e ∷ _) | Parser.op o =
             default <$> Tape.get (State.tape s) (State.pointer s) >>=
-            Tape.set (State.tape s) (State.pointer s) ∘ o >>
+            Tape.set (State.tape s) (State.pointer s) ∘ op o >>
             return (goto s (Edge.target e))
           go (e ∷ _) | Parser.pointer p =
-            return (goto record s { pointer = p $ State.pointer s } $ Edge.target e)
-          go (e ∷ es) | Parser.cond c =
-            default <$> Tape.get (State.tape s) (State.pointer s) >>= cond ∘ c
-              where cond : Bool → f State
-                    cond false = go es
-                    cond true = return (goto s $ Edge.target e)
+            return (goto record s { pointer = ptrArith p $ State.pointer s } $ Edge.target e)
+          go (e ∷ es) | Parser.cond c = do
+            lift true ← lift ∘ cond c ∘ default <$> Tape.get (State.tape s) (State.pointer s)
+              where lift false → go es
+            return (goto s $ Edge.target e)
 
   {-# NON_TERMINATING #-}
   run : IOHandlers → State → f State
@@ -319,7 +344,7 @@ module main where
           go (s ∷ []) a _ | no _ | no _ = return record { action = a ; programFilename = s }
           go (s ∷ x ∷ cs) a obf | no ¬p | no ¬p₁ = usage nothing
 
-  handleParserError : {v : Value ℓ ℓ₀} {a : Set} → Parser.Error v ⊎ a → IO a
+  handleParserError : {a : Set} → Parser.Error ⊎ a → IO a
   handleParserError (inj₁ (Parser.unmatched t)) = Unix.die $ printf "unmatched %s" (Lexer.showToken t)
   handleParserError (inj₁ Parser.unimplemented) = Unix.die $ printf "unimplemented"
   handleParserError (inj₂ a) = return a
@@ -352,12 +377,12 @@ module main where
   runAction s | debugParser = do
     let fn = (Settings.programFilename s)
     raw ← readFiniteFile fn
-    g ← handleParserError $ Parser.graph integer $ Lexer.tokenize fn (𝕊.toVec raw)
-    run (putStrLn $ Parser.showGraph _ g) >>= return ∘ lift
+    g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
+    run (putStrLn $ Parser.showGraph g) >>= return ∘ lift
   runAction s | interpret = do
     let fn = (Settings.programFilename s)
     raw ← readFiniteFile fn
-    g ← handleParserError $ Parser.graph integer $ Lexer.tokenize fn (𝕊.toVec raw)
+    g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
     t ← I.empty tt
     _ ← I.run I.io (I.initial t g)
     return (lift tt)
