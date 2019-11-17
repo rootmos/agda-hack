@@ -1,8 +1,9 @@
 AGDA ?= agda
 ROOT := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-BUILD ?= $(shell pwd)/build
+export BUILD ?= $(shell pwd)/build
 
 TEST_RUNNER := $(ROOT)/test-runner.sh
+RUN := $(ROOT)/run.sh
 
 .PHONY: .clean
 .clean:

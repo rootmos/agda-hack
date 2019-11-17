@@ -7,3 +7,5 @@ $(eval $(call exe, bf, src/bf.agda))
 
 .PHONY: clean
 clean: .clean
+
+.PHONY: test

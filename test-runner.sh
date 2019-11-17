@@ -3,7 +3,7 @@
 set -o nounset -o pipefail -o errexit
 
 ACTION=run
-export VERBOSE=${VERBOSE-}
+VERBOSE=${VERBOSE-}
 while getopts "e:t:lvT:-" OPT; do
     case $OPT in
         e) EXE=$OPTARG ;;
@@ -16,6 +16,8 @@ while getopts "e:t:lvT:-" OPT; do
     esac
 done
 shift $((OPTIND-1))
+
+export VERBOSE
 
 log() {
     if [ -n "$VERBOSE" ]; then
