@@ -1,56 +1,32 @@
 module bf where
 
-import Util as 𝕌
+import Unix
+
+open import bf.Lexer as Lexer using (showToken)
+import bf.Parser as Parser
+import bf.Interpreter as Interpreter
 
 open import Category.Monad using (RawMonad)
+import Codata.Musical.Colist as 𝕃ᶜ
 open import Data.AVL.Map as Map using (Map)
-open import Data.Bool using (Bool; not; true; false)
 open import Data.Char as ℂ using (Char)
-open import Data.Fin as 𝔽 using (Fin)
 open import Data.Integer as ℤ using (ℤ; +_; -[1+_]) renaming (_≟_ to _≟ℤ_)
 import Data.Integer.Properties as ℤᵖ
 open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
-open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
-import Data.Nat.Properties as ℕᵖ
-open import Data.Product as ℙ using (_×_; _,_; ∃-syntax; Σ-syntax; proj₁; proj₂)
 open import Data.String as 𝕊 using (String)
-open import Data.Sum using (_⊎_; inj₁; inj₂; map₂)
-import Data.Sum.Categorical.Left as ⊎
+open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Unit using (⊤; tt)
 open import Data.Vec as 𝕍 using (Vec; []; _∷_)
-import Data.Vec.Categorical as 𝕍ᶜ
-open import Function using (_|>_; _$_; flip; id; _∘_)
-open import Level using (Level; _⊔_; Lift; lift) renaming (suc to lsuc)
-open import Relation.Binary using (Rel)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
-open import Relation.Nullary using (Dec; yes; no)
-open import Relation.Nullary.Decidable using (⌊_⌋)
+open import Function using (_|>_; _$_; _∘_)
+open import IO using (lift; run; sequence′; putStrLn)
+open import IO.Primitive as IO′ using (IO; readFiniteFile)
+open import Level using (Level; Lift; lift; levelOfType)
+open import Relation.Binary.PropositionalEquality using (_≡_)
+open import Relation.Nullary using (yes; no)
 open import Text.Printf using (printf)
 
-private
-  variable
-    n m : ℕ
-    ℓ ℓ₀ ℓ₁ : Level
-
-record Tape (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set ℓ₀ where
- field
-    get : ℤ → F (Maybe V)
-    set : ℤ → V → F (Lift ℓ₀ ⊤)
-
-record Value ℓ c : Set (lsuc (c ⊔ ℓ)) where
-  field
-    Carrier : Set ℓ
-    _≈_ : Rel Carrier c
-    0# : Carrier
-    _≈?0 : ∀ v → Dec (v ≈ 0#)
-    suc : Carrier → Carrier
-    pred : Carrier → Carrier
-
-  default : Maybe Carrier → Carrier
-  default c = 𝕄.fromMaybe 0# c
-
-integer : Value _ _
+integer : Interpreter.Value _ _
 integer = record { Carrier = ℤ
                  ; _≈_ = _≡_
                  ; 0# = + 0
@@ -59,266 +35,28 @@ integer = record { Carrier = ℤ
                  ; pred = ℤ.pred
                  }
 
-record SourceLocation : Set where
-  constructor _,_
-  field
-    filename : String
-    offset : ℕ
+IOMonad : ∀ {ℓ} → RawMonad {ℓ} IO
+IOMonad = record { return = IO′.return ; _>>=_ = IO′._>>=_ }
+open RawMonad {levelOfType ℤ} IOMonad
 
-showSourceLocation : SourceLocation → String
-showSourceLocation (fn , i) = printf "%s:%i" fn (+ i)
+module I where
+  open Interpreter.Mk integer IOMonad public
 
-module Lexer where
-  data Token : Set where
-    inc : SourceLocation → Token
-    dec : SourceLocation → Token
-    left : SourceLocation → Token
-    right : SourceLocation → Token
-    input : SourceLocation → Token
-    output : SourceLocation → Token
-    jz : SourceLocation → Token
-    jnz : SourceLocation → Token
-    comment : Char → SourceLocation → Token
+  empty : IO (Interpreter.Tape ℤ IO)
+  empty = Unix.newIORef (Map.empty ℤᵖ.<-strictTotalOrder) <&> λ r →
+    record { get = λ k → Unix.readIORef r <&> Map.lookup _ k
+           ; set = λ k v →
+             Unix.readIORef r >>= Unix.writeIORef r ∘ Map.insert _ k v <&> lift
+           }
 
-  showToken : Token → String
-  showToken (inc l) = printf "inc (%s)" (showSourceLocation l)
-  showToken (dec l) = printf "dec (%s)" (showSourceLocation l)
-  showToken (left l) = printf "left (%s)" (showSourceLocation l)
-  showToken (right l) = printf "right (%s)" (showSourceLocation l)
-  showToken (input l) = printf "input (%s)" (showSourceLocation l)
-  showToken (output l) = printf "output (%s)" (showSourceLocation l)
-  showToken (jz l) = printf "jz (%s)" (showSourceLocation l)
-  showToken (jnz l) = printf "jnz (%s)" (showSourceLocation l)
-  showToken (comment c l) = printf "%c (%s)" c (showSourceLocation l)
+  io : IOHandlers
+  io = record { input = λ _ → Unix.getChar <&> 𝕄.maybe′ (λ c → + ℂ.toℕ c) (+ 0)
+              ; output = λ { (+ n) → lift <$> Unix.putChar (ℂ.fromℕ n)
+                           ; -[1+ n ] → Unix.die "cannot print negative values"
+                           }
+              }
 
-  token : Char × SourceLocation → Token
-  token ('+' , l) = inc l
-  token ('-' , l) = dec l
-  token ('<' , l) = left l
-  token ('>' , l) = right l
-  token (',' , l) = input l
-  token ('.' , l) = output l
-  token ('[' , l) = jz l
-  token (']' , l) = jnz l
-  token (c , l) = comment c l
-
-  tokenize : String → Vec Char n -> Vec Token n
-  tokenize fn cs = 𝕍.map token $ 𝕍.zip cs $ 𝕍.map (λ i → fn , 𝔽.toℕ i) $ 𝕍.tabulate id
-
-module Parser where
-  open Lexer
-
-  data Op : Set where
-    inc : Op
-    dec : Op
-
-  data PtrArith : Set where
-    inc : PtrArith
-    dec : PtrArith
-
-  data Cond : Set where
-    z : Cond
-    nz : Cond
-
-  data Effect : Set where
-    noop : Effect
-    input : Effect
-    output : Effect
-    op : Op → Effect
-    pointer : PtrArith → Effect
-    cond : Cond → Effect
-
-  showEffect : Effect → String
-  showEffect noop = "noop"
-  showEffect input = "input"
-  showEffect output = "output"
-  showEffect (op inc) = "op(inc)"
-  showEffect (op dec) = "op(dec)"
-  showEffect (pointer inc) = "pointer(inc)"
-  showEffect (pointer dec) = "pointer(dec)"
-  showEffect (cond z) = "cond(z)"
-  showEffect (cond nz) = "cond(nz)"
-
-  data Error : Set where
-    unmatched : Token → Error
-    unimplemented : Error
-
-  Label : ℕ → Set
-  Label n = ⊤ ⊎ Fin n
-
-  showLabel : Label n → String
-  showLabel (inj₁ tt) = "∙"
-  showLabel (inj₂ i) = 𝕌.show𝔽 i
-
-  record Edge n : Set where
-    field
-      base target : Label n
-      effect : Effect
-      source : Maybe Token
-
-  showEdge : Edge n → String
-  showEdge record { base = b ; target = t ; effect = e ; source = just k} =
-    printf "%s→%s %s %s" (showLabel b) (showLabel t) (showEffect e) (showToken k)
-  showEdge record { base = b ; target = t ; effect = e ; source = nothing } =
-    printf "%s→%s %s" (showLabel b) (showLabel t) (showEffect e)
-
-  record Graph : Set where
-    field
-      size : ℕ
-      edges : Label size → List (Edge size)
-
-  module _ n where
-    private
-      L = Label n
-      E = Edge n
-      Raw = Vec Token n
-
-    terminal : L
-    terminal = inj₁ tt
-
-    initial : L
-    initial = inj₁ tt
-
-    private
-      mk : Token → Fin n → Effect → E
-      mk t b e with n ≟ℕ ℕ.suc (𝔽.toℕ b)
-      ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just t }
-      ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just t }
-
-      brackets : Token → Maybe 𝕌.Bracket
-      brackets (jz _) = just 𝕌.op
-      brackets (jnz _) = just 𝕌.cl
-      brackets _ = nothing
-
-    interpretToken : Raw → Token → Fin n → Error ⊎ List E
-    interpretToken _ t@(inc _) b = inj₂ $ mk t b (op inc) ∷ []
-    interpretToken _ t@(dec _) b = inj₂ $ mk t b (op dec) ∷ []
-    interpretToken _ t@(left _) b = inj₂ $ mk t b (pointer inc) ∷ []
-    interpretToken _ t@(right _) b = inj₂ $ mk t b (pointer dec) ∷ []
-    interpretToken _ t@(input _) b = inj₂ $ mk t b input ∷ []
-    interpretToken _ t@(output _) b = inj₂ $ mk t b output ∷ []
-    interpretToken _ t@(comment _ _) b = inj₂ $ mk t b noop ∷ []
-    interpretToken raw t@(jz _) b with mk t b
-    ... | mk′ rewrite proj₂ (𝕌.excSplitℕ b) =
-      𝕌.match brackets (𝕍.drop (𝔽.toℕ b) raw) |> 𝕄.maybe′ f (inj₁ (unmatched t))
-        where f = λ j → inj₂ $ record (mk′ $ cond z) { target = inj₂ (𝔽.raise _ j) } ∷ mk′ noop ∷ []
-    interpretToken raw t@(jnz _) b with mk t b
-    ... | mk′ rewrite proj₂ (𝕌.incSplitℕ b) =
-      𝕌.match (𝕌.flip brackets) (𝕍.reverse $ 𝕍.take _ raw) |> 𝕄.maybe′ f (inj₁ $ unmatched t)
-        where go : ∀ k → Fin (ℕ.suc (𝔽.toℕ b)) → Fin (ℕ.suc (𝔽.toℕ b ℕ.+ k))
-              go k j with 𝔽.inject+ (𝔽.toℕ j) (𝔽.toℕ b 𝔽.ℕ- j)
-              ... | l rewrite ℕᵖ.m∸n+n≡m (𝕌.toℕ-≤ j) = 𝔽.inject+ k l
-              f = λ j → inj₂ $ record (mk′ $ cond nz) { target = inj₂ $ go _ j } ∷ mk′ noop ∷ []
-
-  graph : Vec Token n → Error ⊎ Graph
-  graph {0} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
-  graph {n@(ℕ.suc _)} ts = map₂ (λ es → record { size = n ; edges = edges es }) $
-    M.sequenceA $ 𝕍.zip ts (𝕍.tabulate id) |> 𝕍.map λ { (t , b) → interpretToken n ts t b }
-      where module M {ℓ} = 𝕍ᶜ.TraversableA {ℓ} {n} (⊎.applicative Error ℓ)
-            edges : Vec (List (Edge n)) n → Label n → List (Edge n)
-            edges _ (inj₁ _) = record { base = initial _ ; target = inj₂ 𝔽.zero ; effect = noop ; source = nothing } ∷ []
-            edges es (inj₂ i) = 𝕍.lookup es i
-
-  module _ (g : Graph) where
-    private
-      s = Graph.size g
-
-    labels : Vec (Label s) (ℕ.suc s)
-    labels = initial s ∷ 𝕍.tabulate inj₂
-
-    showGraph : String
-    showGraph = goG "{" $ labels
-      where goL : Label s → String
-            goL = 𝕌.show𝕃 showEdge ∘ Graph.edges g
-            goG : String → Vec (Label s) m → String
-            goG acc [] = printf "%s}" acc
-            goG acc (l ∷ []) = printf "%s%s: %s}" acc (showLabel l) (goL l)
-            goG acc (l ∷ ls@(_ ∷ _)) =
-              goG (printf "%s%s: %s, " acc (showLabel l) (goL l)) ls
-
-module Interpreter (value : Value ℓ₀ ℓ₁) {f : ∀ {ℓ} → Set ℓ → Set ℓ} (F : ∀ {ℓ} → RawMonad {ℓ} f) where
-  open Value value renaming (Carrier to V)
-  open Parser using (Graph; Label; Edge)
-  open RawMonad {ℓ₀} F public
-
-  record State : Set ℓ₀ where
-    field
-      tape : Tape V f
-      pointer : ℤ
-      program : Σ[ g ∈ Graph ] Label (Graph.size g)
-
-  initial : Tape V f → Graph → State
-  initial t g = record { tape = t ; pointer = + 0 ; program = g , Parser.initial _ }
-
-  module _ (s : State) where
-    private
-      g = (proj₁ $ State.program s)
-      l = (proj₂ $ State.program s)
-      size = Graph.size g
-
-    goto : Label size → State
-    goto l = record s { program = g , l }
-
-    showState : String
-    showState = printf "{ program = %s , %s }" (Parser.showGraph g) (Parser.showLabel l)
-
-  record IOHandlers : Set ℓ₀ where
-    field
-      input : ⊤ → f V
-      output : V → f (Lift ℓ₀ ⊤)
-
-  op : Parser.Op → V → V
-  op Parser.inc = suc
-  op Parser.dec = pred
-
-  ptrArith : Parser.PtrArith → ℤ → ℤ
-  ptrArith Parser.inc = ℤ.suc
-  ptrArith Parser.dec = ℤ.pred
-
-  cond : Parser.Cond → V → Bool
-  cond Parser.z v = ⌊ v ≈?0 ⌋
-  cond Parser.nz v = not ⌊ v ≈?0 ⌋
-
-  step : IOHandlers → State → f State
-  step io s = go (Graph.edges g (proj₂ $ State.program s))
-    where g = proj₁ (State.program s)
-          size = Graph.size g
-          go : List (Edge size) → f State
-          go [] = return s
-          go (e ∷ _) with Edge.effect e
-          go (e ∷ _) | Parser.noop = return (goto s $ Edge.target e)
-          go (e ∷ _) | Parser.input =
-            IOHandlers.input io tt >>= Tape.set (State.tape s) (State.pointer s) >>
-            return (goto s $ Edge.target e)
-          go (e ∷ _) | Parser.output =
-            default <$> Tape.get (State.tape s) (State.pointer s) >>= IOHandlers.output io >>
-            return (goto s $ Edge.target e)
-          go (e ∷ _) | Parser.op o =
-            default <$> Tape.get (State.tape s) (State.pointer s) >>=
-            Tape.set (State.tape s) (State.pointer s) ∘ op o >>
-            return (goto s (Edge.target e))
-          go (e ∷ _) | Parser.pointer p =
-            return (goto record s { pointer = ptrArith p $ State.pointer s } $ Edge.target e)
-          go (e ∷ es) | Parser.cond c = do
-            lift true ← lift ∘ cond c ∘ default <$> Tape.get (State.tape s) (State.pointer s)
-              where lift false → go es
-            return (goto s $ Edge.target e)
-
-  {-# NON_TERMINATING #-}
-  run : IOHandlers → State → f State
-  run io s = step io s >>= halt?
-    where halt? : State → f State
-          halt? s′ with proj₂ $ State.program s′
-          halt? s′ | inj₁ tt = return s′
-          halt? s′ | inj₂ y = run io s′
-
-module main where
-  open import IO using (lift; run; sequence′; putStrLn)
-  open import IO.Primitive hiding (putStrLn)
-  import Codata.Musical.Colist as 𝕃ᶜ
-
-  import Unix
-
+module cli where
   data Action : Set where
     debugLexer : Action
     debugParser : Action
@@ -345,26 +83,9 @@ module main where
           go (s ∷ x ∷ cs) a obf | no ¬p | no ¬p₁ = usage nothing
 
   handleParserError : {a : Set} → Parser.Error ⊎ a → IO a
-  handleParserError (inj₁ (Parser.unmatched t)) = Unix.die $ printf "unmatched %s" (Lexer.showToken t)
+  handleParserError (inj₁ (Parser.unmatched t)) = Unix.die $ printf "unmatched %s" (showToken t)
   handleParserError (inj₁ Parser.unimplemented) = Unix.die $ printf "unimplemented"
   handleParserError (inj₂ a) = return a
-
-  module I where
-    open Interpreter integer record { return = return; _>>=_ = _>>=_ } hiding (_>>=_) public
-
-    empty : ⊤ → IO (Tape ℤ IO)
-    empty tt = Unix.newIORef (Map.empty ℤᵖ.<-strictTotalOrder) <&> λ r →
-      record { get = λ k → Unix.readIORef r <&> Map.lookup _ k
-             ; set = λ k v →
-               Unix.readIORef r >>= Unix.writeIORef r ∘ Map.insert _ k v <&> lift
-             }
-
-    io : IOHandlers
-    io = record { input = λ _ → Unix.getChar <&> 𝕄.maybe′ (λ c → + ℂ.toℕ c) (+ 0)
-                ; output = λ { (+ n) → lift <$> Unix.putChar (ℂ.fromℕ n)
-                             ; -[1+ n ] → Unix.die "cannot print negative values"
-                             }
-                }
 
   runAction : Settings → IO _
   runAction s with Settings.action s
@@ -373,18 +94,16 @@ module main where
     let fn = (Settings.programFilename s)
     raw ← readFiniteFile fn
     let ts = Lexer.tokenize fn (𝕊.toVec raw)
-    run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ Lexer.showToken) (𝕃ᶜ.fromList $ 𝕍.toList ts)
+    run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ showToken) (𝕃ᶜ.fromList $ 𝕍.toList ts)
   runAction s | debugParser = do
     let fn = (Settings.programFilename s)
     raw ← readFiniteFile fn
     g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
-    run (putStrLn $ Parser.showGraph g) >>= return ∘ lift
+    run (putStrLn $ Parser.showGraph g) <&> lift
   runAction s | interpret = do
     let fn = (Settings.programFilename s)
     raw ← readFiniteFile fn
     g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
-    t ← I.empty tt
-    _ ← I.run I.io (I.initial t g)
-    return (lift tt)
+    (I.run I.io ∘ I.initial g =<< I.empty) >> return (lift tt)
 
   main = Unix.getArgs >>= parseArgs >>= runAction
