@@ -1,4 +1,4 @@
-module Unix where
+module Overture.Unix where
 
 open import Data.Char using (Char)
 open import Data.Integer using (ℤ; +_)
@@ -15,7 +15,6 @@ open import Relation.Binary.PropositionalEquality using (_≢_)
 {-# FOREIGN GHC import qualified System.Environment as Env #-}
 {-# FOREIGN GHC import qualified System.Exit as E #-}
 {-# FOREIGN GHC import qualified Data.Text as T #-}
-{-# FOREIGN GHC import qualified Data.IORef as R #-}
 {-# FOREIGN GHC import qualified System.IO.Error as Err #-}
 {-# FOREIGN GHC import Control.Exception (catch) #-}
 {-# FOREIGN GHC import qualified Data.Bool as B #-}
@@ -23,10 +22,12 @@ open import Relation.Binary.PropositionalEquality using (_≢_)
 postulate
   getArgs : IO (List String)
   getProgName : IO String
-  putChar : Char → IO ⊤
 
 {-# COMPILE GHC getArgs = fmap (fmap T.pack) Env.getArgs #-}
 {-# COMPILE GHC getProgName = fmap T.pack Env.getProgName #-}
+
+postulate
+  putChar : Char → IO ⊤
 {-# COMPILE GHC putChar = putChar #-}
 
 private
@@ -67,14 +68,3 @@ postulate
   die : {a : Set} → String → IO a
 
 {-# COMPILE GHC die = \ _ msg -> E.die (T.unpack msg) #-}
-
-postulate
-  IORef : (a : Set) → Set
-  newIORef : ∀ {a} → a → IO (IORef a)
-  readIORef : ∀ {a} → IORef a → IO a
-  writeIORef : ∀ {a} → IORef a → a → IO ⊤
-
-{-# COMPILE GHC IORef = type R.IORef #-}
-{-# COMPILE GHC newIORef = \ _ -> R.newIORef #-}
-{-# COMPILE GHC readIORef = \ _ -> R.readIORef #-}
-{-# COMPILE GHC writeIORef = \ _ -> R.writeIORef #-}

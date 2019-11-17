@@ -1,6 +1,8 @@
 module bf where
 
-import Unix
+import Overture.Unix as Unix
+open import Overture.IO as IO using (IO; putStrLn)
+import Overture.IORef as IORef
 
 open import bf.Lexer as Lexer using (showToken)
 import bf.Parser as Parser
@@ -16,12 +18,10 @@ open import Data.List as 𝕃 using (List; []; _∷_)
 open import Data.Maybe as 𝕄 using (Maybe; nothing; just)
 open import Data.String as 𝕊 using (String)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.Unit using (⊤; tt)
+open import Data.Unit using (⊤)
 open import Data.Vec as 𝕍 using (Vec; []; _∷_)
 open import Data.Product using (_,_)
 open import Function using (_|>_; _$_; _∘_)
-open import IO using (lift; run; sequence′; putStrLn)
-open import IO.Primitive as IO′ using (IO; readFiniteFile)
 open import Level using (Level; Lift; lift; levelOfType)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 open import Relation.Nullary using (yes; no)
@@ -36,18 +36,16 @@ integer = record { Carrier = ℤ
                  ; pred = ℤ.pred
                  }
 
-IOMonad : ∀ {ℓ} → RawMonad {ℓ} IO
-IOMonad = record { return = IO′.return ; _>>=_ = IO′._>>=_ }
-open RawMonad {levelOfType ℤ} IOMonad
+open RawMonad {levelOfType ℤ} IO.monad
 
 module I where
-  open Interpreter.Mk integer IOMonad public
+  open Interpreter.Mk integer IO.monad public
 
   empty : IO (Interpreter.Tape ℤ IO)
-  empty = Unix.newIORef (Map.empty ℤᵖ.<-strictTotalOrder) <&> λ r →
-    record { get = λ k → Unix.readIORef r <&> Map.lookup _ k
+  empty = IORef.newIORef (Map.empty ℤᵖ.<-strictTotalOrder) <&> λ r →
+    record { get = λ k → IORef.readIORef r <&> Map.lookup _ k
            ; set = λ k v →
-             Unix.readIORef r >>= Unix.writeIORef r ∘ Map.insert _ k v <&> lift
+             IORef.readIORef r >>= IORef.writeIORef r ∘ Map.insert _ k v <&> lift
            }
 
   io : IOHandlers
@@ -71,14 +69,14 @@ module cli where
 
   usage : {a : Set} → Maybe String → IO a
   usage s = do
-    ec ← 𝕄.maybe′ (λ s → run (putStrLn s) >> return (Unix.failure $ + 2 , λ ())) (return Unix.success) s
+    ec ← 𝕄.maybe′ putStrLn (return _) s
     p ← Unix.getProgName
-    run ∘ putStrLn $ printf "Usage: %s [OPTION]... FILE" p
-    run ∘ putStrLn $        "Interpret the BrainFuck program in FILE"
-    run ∘ putStrLn $        ""
-    run ∘ putStrLn $        " --lexer   run lexer and output tokens"
-    run ∘ putStrLn $        " --parser  run parser and output the parsed program"
-    Unix.exit ec
+    putStrLn $ printf "Usage: %s [OPTION]... FILE" p
+    putStrLn $        "Interpret the BrainFuck program in FILE"
+    putStrLn $        ""
+    putStrLn $        " --lexer   run lexer and output tokens"
+    putStrLn $        " --parser  run parser and output the parsed program"
+    Unix.exit $ 𝕄.maybe′ (λ _ → Unix.failure $ + 2 , λ ()) Unix.success s
 
   parseArgs : List String → IO Settings
   parseArgs cs = go cs interpret nothing
@@ -101,18 +99,18 @@ module cli where
   runAction s | usageAction = usage nothing
   runAction s | debugLexer = do
     let fn = (Settings.programFilename s)
-    raw ← readFiniteFile fn
+    raw ← IO.readFiniteFile fn
     let ts = Lexer.tokenize fn (𝕊.toVec raw)
-    run ∘ sequence′ $ 𝕃ᶜ.map (putStrLn ∘ showToken) (𝕃ᶜ.fromList $ 𝕍.toList ts)
+    IO.sequence′ $ 𝕃ᶜ.map (putStrLn ∘ showToken) (𝕃ᶜ.fromList $ 𝕍.toList ts)
   runAction s | debugParser = do
     let fn = (Settings.programFilename s)
-    raw ← readFiniteFile fn
+    raw ← IO.readFiniteFile fn
     g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
-    run (putStrLn $ Parser.showGraph g) <&> lift
+    (putStrLn $ Parser.showGraph g) <&> lift
   runAction s | interpret = do
     let fn = (Settings.programFilename s)
-    raw ← readFiniteFile fn
+    raw ← IO.readFiniteFile fn
     g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
-    (I.run I.io ∘ I.initial g =<< I.empty) >> return (lift tt)
+    (I.run I.io ∘ I.initial g =<< I.empty) >> return (lift _)
 
   main = Unix.getArgs >>= parseArgs >>= runAction

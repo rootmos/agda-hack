@@ -1,7 +1,10 @@
 module bf.Parser where
 
-import Util as 𝕌
 open import bf.Lexer
+
+open import Overture.Show using (show𝔽; show𝕃)
+import Overture.Match as Match
+import Overture.Fin as 𝔽ᵒ
 
 open import Data.Fin as 𝔽 using (Fin)
 open import Data.Maybe as 𝕄 using (Maybe; just; nothing)
@@ -59,7 +62,7 @@ Label n = ⊤ ⊎ Fin n
 
 showLabel : ∀ {n} → Label n → String
 showLabel (inj₁ tt) = "∙"
-showLabel (inj₂ i) = 𝕌.show𝔽 i
+showLabel (inj₂ i) = show𝔽 i
 
 record Edge n : Set where
   field
@@ -96,9 +99,9 @@ module _ n where
     ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just t }
     ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just t }
 
-    brackets : Token → Maybe 𝕌.Bracket
-    brackets (jz _) = just 𝕌.op
-    brackets (jnz _) = just 𝕌.cl
+    brackets : Token → Maybe Match.Bracket
+    brackets (jz _) = just Match.op
+    brackets (jnz _) = just Match.cl
     brackets _ = nothing
 
   interpretToken : Raw → Token → Fin n → Error ⊎ List E
@@ -110,15 +113,15 @@ module _ n where
   interpretToken _ t@(output _) b = inj₂ $ mk t b output ∷ []
   interpretToken _ t@(comment _ _) b = inj₂ $ mk t b noop ∷ []
   interpretToken raw t@(jz _) b with mk t b
-  ... | mk′ rewrite proj₂ (𝕌.excSplitℕ b) =
-    𝕌.match brackets (𝕍.drop (𝔽.toℕ b) raw) |> 𝕄.maybe′ f (inj₁ (unmatched t))
+  ... | mk′ rewrite proj₂ (𝔽ᵒ.excSplitℕ b) =
+    Match.match brackets (𝕍.drop (𝔽.toℕ b) raw) |> 𝕄.maybe′ f (inj₁ (unmatched t))
       where f = λ j → inj₂ $ record (mk′ $ cond z) { target = inj₂ (𝔽.raise _ j) } ∷ mk′ noop ∷ []
   interpretToken raw t@(jnz _) b with mk t b
-  ... | mk′ rewrite proj₂ (𝕌.incSplitℕ b) =
-    𝕌.match (𝕌.flip brackets) (𝕍.reverse $ 𝕍.take _ raw) |> 𝕄.maybe′ f (inj₁ $ unmatched t)
+  ... | mk′ rewrite proj₂ (𝔽ᵒ.incSplitℕ b) =
+    Match.match (Match.flip brackets) (𝕍.reverse $ 𝕍.take _ raw) |> 𝕄.maybe′ f (inj₁ $ unmatched t)
       where go : ∀ k → Fin (ℕ.suc (𝔽.toℕ b)) → Fin (ℕ.suc (𝔽.toℕ b ℕ.+ k))
             go k j with 𝔽.inject+ (𝔽.toℕ j) (𝔽.toℕ b 𝔽.ℕ- j)
-            ... | l rewrite ℕᵖ.m∸n+n≡m (𝕌.toℕ-≤ j) = 𝔽.inject+ k l
+            ... | l rewrite ℕᵖ.m∸n+n≡m (𝔽ᵒ.toℕ-≤ j) = 𝔽.inject+ k l
             f = λ j → inj₂ $ record (mk′ $ cond nz) { target = inj₂ $ go _ j } ∷ mk′ noop ∷ []
 
 graph : ∀ {n} → Vec Token n → Error ⊎ Graph
@@ -140,7 +143,7 @@ module _ (g : Graph) where
   showGraph : String
   showGraph = goG "{" $ labels
     where goL : Label s → String
-          goL = 𝕌.show𝕃 showEdge ∘ Graph.edges g
+          goL = show𝕃 showEdge ∘ Graph.edges g
           goG : ∀ {m} → String → Vec (Label s) m → String
           goG acc [] = printf "%s}" acc
           goG acc (l ∷ []) = printf "%s%s: %s}" acc (showLabel l) (goL l)
