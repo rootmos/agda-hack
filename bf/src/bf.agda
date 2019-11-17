@@ -18,6 +18,7 @@ open import Data.String as 𝕊 using (String)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.Unit using (⊤; tt)
 open import Data.Vec as 𝕍 using (Vec; []; _∷_)
+open import Data.Product using (_,_)
 open import Function using (_|>_; _$_; _∘_)
 open import IO using (lift; run; sequence′; putStrLn)
 open import IO.Primitive as IO′ using (IO; readFiniteFile)
@@ -69,7 +70,15 @@ module cli where
       programFilename : String
 
   usage : {a : Set} → Maybe String → IO a
-  usage _ = Unix.exit (Unix.failure $ + 2)
+  usage s = do
+    ec ← 𝕄.maybe′ (λ s → run (putStrLn s) >> return (Unix.failure $ + 2 , λ ())) (return Unix.success) s
+    p ← Unix.getProgName
+    run ∘ putStrLn $ printf "Usage: %s [OPTION]... FILE" p
+    run ∘ putStrLn $        "Interpret the BrainFuck program in FILE"
+    run ∘ putStrLn $        ""
+    run ∘ putStrLn $        " --lexer   run lexer and output tokens"
+    run ∘ putStrLn $        " --parser  run parser and output the parsed program"
+    Unix.exit ec
 
   parseArgs : List String → IO Settings
   parseArgs cs = go cs interpret nothing
@@ -80,7 +89,7 @@ module cli where
           go (s ∷ cs) a _ | no _ with s 𝕊.≟ "--parser"
           go (s ∷ cs) a obf | no _ | yes _ = go cs debugParser obf
           go (s ∷ []) a _ | no _ | no _ = return record { action = a ; programFilename = s }
-          go (s ∷ x ∷ cs) a obf | no ¬p | no ¬p₁ = usage nothing
+          go (s ∷ _ ∷ _) _ _ | no _ | no _ = usage $ just "trailing positional argument(s)"
 
   handleParserError : {a : Set} → Parser.Error ⊎ a → IO a
   handleParserError (inj₁ (Parser.unmatched t)) = Unix.die $ printf "unmatched %s" (showToken t)

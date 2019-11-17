@@ -1,14 +1,18 @@
 module Unix where
 
 open import Data.Char using (Char)
-open import Data.Integer using (ℤ)
+open import Data.Integer using (ℤ; +_)
 open import Data.List using (List)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Data.String using (String)
+open import Data.Product using (_,_; Σ-syntax)
 open import Data.Unit using (⊤)
 open import IO.Primitive using (IO; _>>=_; return)
+open import Function using (_∘_)
+import Foreign.Haskell as ℍ
+open import Relation.Binary.PropositionalEquality using (_≢_)
 
-{-# FOREIGN GHC import qualified System.Environment #-}
+{-# FOREIGN GHC import qualified System.Environment as Env #-}
 {-# FOREIGN GHC import qualified System.Exit as E #-}
 {-# FOREIGN GHC import qualified Data.Text as T #-}
 {-# FOREIGN GHC import qualified Data.IORef as R #-}
@@ -18,43 +22,51 @@ open import IO.Primitive using (IO; _>>=_; return)
 
 postulate
   getArgs : IO (List String)
+  getProgName : IO String
   putChar : Char → IO ⊤
 
-{-# COMPILE GHC getArgs = fmap (fmap T.pack) System.Environment.getArgs #-}
+{-# COMPILE GHC getArgs = fmap (fmap T.pack) Env.getArgs #-}
+{-# COMPILE GHC getProgName = fmap T.pack Env.getProgName #-}
 {-# COMPILE GHC putChar = putChar #-}
 
 private
-  data Maybe′ (a : Set) : Set where
-    some : a → Maybe′ a
-    none : Maybe′ a
-  {-# COMPILE GHC Maybe′ = data Maybe (Just | Nothing) #-}
-
   postulate
-    getChar′ : IO (Maybe′ Char)
+    getChar′ : IO (ℍ.Maybe Char)
 
 {-# COMPILE GHC getChar′ = catch (Just <$> getChar) (\e -> B.bool (Err.ioError e) (return Nothing) (Err.isEOFError e)) #-}
-getChar = getChar′ >>= λ { (some a) → return (just a) ; none → return nothing }
+getChar = getChar′ >>= return ∘ ℍ.fromForeignMaybe
+
+private
+  data ExitCode′ : Set where
+    success : ExitCode′
+    failure : ℤ → ExitCode′
+
+{-# FOREIGN GHC
+  data ExitCode'' = ExitSuccess'' | ExitFailure'' Integer
+
+  convertExitCode :: ExitCode'' -> E.ExitCode
+  convertExitCode ExitSuccess'' = E.ExitSuccess
+  convertExitCode (ExitFailure'' i) = E.ExitFailure (fromIntegral i)
+#-}
+{-# COMPILE GHC ExitCode′ = data ExitCode'' (ExitSuccess'' | ExitFailure'') #-}
+
+private
+  postulate
+    exit′ : {a : Set} → ExitCode′ → IO a
+{-# COMPILE GHC exit′ = \ _ ec -> E.exitWith (convertExitCode ec) #-}
 
 data ExitCode : Set where
   success : ExitCode
-  failure : ℤ → ExitCode
+  failure : Σ[ ec ∈ ℤ ] ec ≢ + 0 → ExitCode
 
-{-# FOREIGN GHC
-  data ExitCode' = ExitSuccess' | ExitFailure' Integer
-
-  convertExitCode :: ExitCode' -> E.ExitCode
-  convertExitCode ExitSuccess' = E.ExitSuccess
-  convertExitCode (ExitFailure' i) = E.ExitFailure (fromIntegral i)
-#-}
-{-# COMPILE GHC ExitCode = data ExitCode' (ExitSuccess' | ExitFailure') #-}
+exit : {a : Set} → ExitCode → IO a
+exit success = exit′ success
+exit (failure (ec , _)) = exit′ (failure ec)
 
 postulate
-  exit : {a : Set} → ExitCode → IO a
   die : {a : Set} → String → IO a
 
-{-# COMPILE GHC exit = \ _ ec -> E.exitWith (convertExitCode ec) #-}
 {-# COMPILE GHC die = \ _ msg -> E.die (T.unpack msg) #-}
-
 
 postulate
   IORef : (a : Set) → Set
