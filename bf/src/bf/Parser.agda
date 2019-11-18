@@ -10,7 +10,7 @@ open import Data.Fin as 𝔽 using (Fin)
 open import Data.Maybe as 𝕄 using (Maybe; just; nothing)
 open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
 import Data.Nat.Properties as ℕᵖ
-open import Data.List using (List; _∷_; [])
+open import Data.List as 𝕃 using (List; _∷_; []; length)
 open import Data.Product as ℙ using (_×_; _,_; Σ-syntax; proj₁; proj₂)
 open import Data.Unit using (⊤; tt)
 open import Data.Vec as 𝕍 using (Vec; _∷_; [])
@@ -20,6 +20,7 @@ import Data.Sum.Categorical.Left as ⊎
 open import Data.String using (String)
 open import Function using (_$_; _|>_; _∘_; id)
 open import Relation.Nullary using (yes; no)
+open import Relation.Binary.PropositionalEquality using (_≡_; _≢_)
 open import Text.Printf using (printf)
 
 data Op : Set where
@@ -80,6 +81,24 @@ record Graph : Set where
   field
     size : ℕ
     edges : Label size → List (Edge size)
+
+record EdgeLabel (g : Graph) : Set where
+  constructor _,_
+  field
+    node : Label (Graph.size g)
+    edge : Fin (length $ Graph.edges g node)
+
+record Path (g : Graph) (l : ℕ) : Set where
+  field
+    edges : Vec (EdgeLabel g) l
+
+  private
+    [_] : Fin l → Edge (Graph.size g)
+    [ i ] = let n , e = 𝕍.lookup edges i in 𝕃.lookup (Graph.edges g n) e
+
+  field
+    connected : {i : Fin l} → (P : l ≢ 𝔽.toℕ (𝔽.suc i))
+              → Edge.target [ i ] ≡ Edge.base [ 𝔽.lower₁ _ P ]
 
 module _ n where
   private
