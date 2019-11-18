@@ -1,10 +1,12 @@
 module bf.Interpreter where
 
 open import Category.Monad using (RawMonad)
+open import Codata.Musical.Colist as 𝕃ᶜ using (Colist; _∷_; [])
+open import Codata.Musical.Notation using (♯_; ♭)
 open import Data.Bool using (Bool; true; false; not)
 open import Data.Integer as ℤ using (ℤ; +_)
 open import Data.List using (List; _∷_; [])
-open import Data.Maybe as 𝕄 using (Maybe)
+open import Data.Maybe as 𝕄 using (Maybe; just; nothing)
 open import Data.Product as ℙ using (_×_; _,_; Σ-syntax; proj₁; proj₂)
 open import Data.String using (String)
 open import Data.Sum using (inj₁; inj₂)
@@ -16,10 +18,12 @@ open import Relation.Nullary using (Dec)
 open import Relation.Nullary.Decidable using (⌊_⌋)
 open import Text.Printf using (printf)
 
-record Tape {ℓ₀} (V : Set ℓ₀) (F : ∀ {ℓ} → Set ℓ → Set ℓ) : Set ℓ₀ where
+record Tape {ℓ} (V : Set ℓ) : Set (lsuc ℓ) where
   field
-    get : ℤ → F (Maybe V)
-    set : ℤ → V → F (Lift ℓ₀ ⊤)
+    Carrier : Set ℓ
+    get : Carrier → ℤ → Maybe V
+    set : Carrier → ℤ → V → Carrier
+    empty : Carrier
 
 record Value ℓ c : Set (lsuc (c ⊔ ℓ)) where
   field
@@ -35,19 +39,21 @@ record Value ℓ c : Set (lsuc (c ⊔ ℓ)) where
 
 module Mk {ℓ₀} {ℓ₁}
   (value : Value ℓ₀ ℓ₁)
+  (Tape : Tape (Value.Carrier value))
   {f : ∀ {ℓ} → Set ℓ → Set ℓ} (F : ∀ {ℓ} → RawMonad {ℓ} f) where
   open Value value renaming (Carrier to V)
+  open Tape Tape renaming (Carrier to T)
   open import bf.Parser as Parser using (Graph; Label; Edge)
   open RawMonad {ℓ₀} F
 
   record State : Set ℓ₀ where
     field
-      tape : Tape V f
+      tape : T
       pointer : ℤ
       program : Σ[ g ∈ Graph ] Label (Graph.size g)
 
-  initial : Graph → Tape V f → State
-  initial g t = record { tape = t ; pointer = + 0 ; program = g , Parser.initial _ }
+  initial : Graph → State
+  initial g = record { tape = empty ; pointer = + 0 ; program = g , Parser.initial _ }
 
   module _ (s : State) where
     private
@@ -61,11 +67,6 @@ module Mk {ℓ₀} {ℓ₁}
     showState : String
     showState = printf "{ program = %s , %s }" (Parser.showGraph g) (Parser.showLabel l)
 
-  record IOHandlers : Set ℓ₀ where
-    field
-      input : ⊤ → f V
-      output : V → f (Lift ℓ₀ ⊤)
-
   op : Parser.Op → V → V
   op Parser.inc = suc
   op Parser.dec = pred
@@ -78,35 +79,48 @@ module Mk {ℓ₀} {ℓ₁}
   cond Parser.z v = ⌊ v ≈?0 ⌋
   cond Parser.nz v = not ⌊ v ≈?0 ⌋
 
-  step : IOHandlers → State → f State
-  step io s = go (Graph.edges g (proj₂ $ State.program s))
-    where g = proj₁ (State.program s)
-          size = Graph.size g
-          go : List (Edge size) → f State
-          go [] = return s
-          go (e ∷ _) with Edge.effect e
-          go (e ∷ _) | Parser.noop = return (goto s $ Edge.target e)
-          go (e ∷ _) | Parser.input =
-            IOHandlers.input io tt >>= Tape.set (State.tape s) (State.pointer s) >>
-            return (goto s $ Edge.target e)
-          go (e ∷ _) | Parser.output =
-            default <$> Tape.get (State.tape s) (State.pointer s) >>= IOHandlers.output io >>
-            return (goto s $ Edge.target e)
-          go (e ∷ _) | Parser.op o =
-            default <$> Tape.get (State.tape s) (State.pointer s) >>=
-            Tape.set (State.tape s) (State.pointer s) ∘ op o >>
-            return (goto s (Edge.target e))
-          go (e ∷ _) | Parser.pointer p =
-            return (goto record s { pointer = ptrArith p $ State.pointer s } $ Edge.target e)
-          go (e ∷ es) | Parser.cond c = do
-            lift true ← lift ∘ cond c ∘ default <$> Tape.get (State.tape s) (State.pointer s)
-              where lift false → go es
-            return (goto s $ Edge.target e)
+  data EOFBehavior : Set ℓ₀ where
+    writeValue : V → EOFBehavior
+    writeDefault : EOFBehavior
+    leaveUnmodified : EOFBehavior
 
-  {-# NON_TERMINATING #-}
-  run : IOHandlers → State → f State
-  run io s = step io s >>= halt?
-    where halt? : State → f State
-          halt? s′ with proj₂ $ State.program s′
-          halt? s′ | inj₁ tt = return s′
-          halt? s′ | inj₂ y = run io s′
+  step : EOFBehavior → State → Colist V → State × Colist V × Maybe V
+  step eof s input = go eof (Graph.edges g (proj₂ $ State.program s)) input
+    where g = proj₁ (State.program s)
+          tape = State.tape s
+          p = State.pointer s
+          go : EOFBehavior → List (Edge (Graph.size g)) → Colist V → State × Colist V × Maybe V
+          go eof [] input = s , input , nothing
+          go eof (record { target = t ; effect = Parser.noop } ∷ _) input = goto s t , input , nothing
+          go eof (record { target = t ; effect = Parser.input } ∷ _) [] with eof
+          go eof (record { target = t ; effect = Parser.input } ∷ _) [] | writeDefault =
+            goto record s { tape = set tape p (default nothing) } t , input , nothing
+          go eof (record { target = t ; effect = Parser.input } ∷ _) [] | writeValue v =
+            goto record s { tape = set tape p v } t , input , nothing
+          go eof (record { target = t ; effect = Parser.input } ∷ _) [] | leaveUnmodified =
+            goto s t , input , nothing
+          go eof (record { target = t ; effect = Parser.input } ∷ _) (v ∷ input) =
+            goto record s { tape = set tape p v } t , ♭ input , nothing
+          go eof (record { target = t ; effect = Parser.output } ∷ _) input =
+            goto s t , input , just (default $ get tape p)
+          go eof (record { target = t ; effect = Parser.op o } ∷ _) input =
+            goto record s { tape = set tape p ∘ op o ∘ default $ get tape p } t , input , nothing
+          go eof (record { target = t ; effect = Parser.pointer pa } ∷ _) input =
+            goto record s { pointer = ptrArith pa p } t , input , nothing
+          go eof (record { target = t ; effect = Parser.cond c } ∷ es) input with cond c ∘ default $ get tape p
+          go eof (record { target = t ; effect = Parser.cond c } ∷ es) input | false = go eof es input
+          go eof (record { target = t ; effect = Parser.cond c } ∷ es) input | true = goto s t , input , nothing
+
+  eval : EOFBehavior → State → Colist V → Colist (State × Colist V × Maybe V)
+  eval _ record { tape = _ ; pointer = _ ; program = _ , inj₁ _ } _ = []
+  eval eof s @ record { tape = _ ; pointer = _ ; program = _ , inj₂ _ } input =
+    let hd@(s′ , input , _) = step eof s input in hd ∷ ♯ eval eof s′ input
+
+  {-# TERMINATING #-}
+  run : EOFBehavior → Graph → Colist V → Colist V
+  run eof g input = flatten ∘ 𝕃ᶜ.map (λ { ( _ , _ , output ) → output }) $ eval eof (initial g) input
+    where flatten : Colist (Maybe V) → Colist V
+          flatten [] = []
+          flatten (nothing ∷ vs) = flatten (♭ vs)
+          flatten (just v ∷ vs) = v ∷ ♯ flatten (♭ vs)
+

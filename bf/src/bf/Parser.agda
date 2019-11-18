@@ -1,3 +1,4 @@
+{-# OPTIONS --allow-unsolved-metas #-}
 module bf.Parser where
 
 open import bf.Lexer
@@ -118,7 +119,7 @@ singletonPath e = record { edges = e ∷ [] ; connected = λ {i} P → ⊥-elim 
         lemma 𝔽.zero = refl
 
 join : ∀ {n} {m} {g : Graph} {p₀ : Path g (ℕ.suc n)} {p₁ : Path g (ℕ.suc m)}
-     → target p₀ ≡ base p₁ → Path g (ℕ.suc n ℕ.+ ℕ.suc m)
+     → target p₀ ≡ base p₁ → Σ[ p ∈ Path g (ℕ.suc n ℕ.+ ℕ.suc m) ] base p ≡ base p₀ × target p ≡ target p₁
 join = {!!}
 
 module _ n where
