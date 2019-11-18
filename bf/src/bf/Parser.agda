@@ -6,6 +6,7 @@ open import Overture.Show using (show𝔽; show𝕃)
 import Overture.Match as Match
 import Overture.Fin as 𝔽ᵒ
 
+open import Data.Empty using (⊥-elim)
 open import Data.Fin as 𝔽 using (Fin)
 open import Data.Maybe as 𝕄 using (Maybe; just; nothing)
 open import Data.Nat as ℕ using (ℕ) renaming (_≟_ to _≟ℕ_)
@@ -19,8 +20,8 @@ open import Data.Sum using (_⊎_; inj₁; inj₂; map₂)
 import Data.Sum.Categorical.Left as ⊎
 open import Data.String using (String)
 open import Function using (_$_; _|>_; _∘_; id)
-open import Relation.Nullary using (yes; no)
-open import Relation.Binary.PropositionalEquality using (_≡_; _≢_)
+open import Relation.Nullary using (¬_; yes; no)
+open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl)
 open import Text.Printf using (printf)
 
 data Op : Set where
@@ -99,6 +100,16 @@ record Path (g : Graph) (l : ℕ) : Set where
   field
     connected : {i : Fin l} → (P : l ≢ 𝔽.toℕ (𝔽.suc i))
               → Edge.target [ i ] ≡ Edge.base [ 𝔽.lower₁ _ P ]
+
+emptyPath : (g : Graph) → Path g 0
+emptyPath g = record { edges = [] ; connected = λ {i} → ⊥-elim $ lemma i }
+  where lemma : ¬ Fin 0
+        lemma ()
+
+singletonPath : {g : Graph} → EdgeLabel g → Path g 1
+singletonPath e = record { edges = e ∷ [] ; connected = λ {i} P → ⊥-elim $ P (lemma i) }
+  where lemma : (i : Fin 1) → 1 ≡ ℕ.suc (𝔽.toℕ i)
+        lemma 𝔽.zero = refl
 
 module _ n where
   private
