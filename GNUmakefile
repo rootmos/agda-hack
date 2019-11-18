@@ -1,8 +1,6 @@
 all:
 	$(MAKE) -C overture
 	$(MAKE) -C agt
-	$(MAKE) -C hello
-	$(MAKE) -C fm
 	$(MAKE) -C bf
 
 DOCKER ?= docker
