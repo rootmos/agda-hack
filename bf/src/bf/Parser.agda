@@ -101,6 +101,12 @@ record Path (g : Graph) (l : ℕ) : Set where
     connected : {i : Fin l} → (P : l ≢ 𝔽.toℕ (𝔽.suc i))
               → Edge.target [ i ] ≡ Edge.base [ 𝔽.lower₁ _ P ]
 
+base : ∀ {l} {g : Graph} → Path g (ℕ.suc l) → Label (Graph.size g)
+base = {!!}
+
+target : ∀ {l} {g : Graph} → Path g (ℕ.suc l) → Label (Graph.size g)
+target = {!!}
+
 emptyPath : (g : Graph) → Path g 0
 emptyPath g = record { edges = [] ; connected = λ {i} → ⊥-elim $ lemma i }
   where lemma : ¬ Fin 0
@@ -110,6 +116,10 @@ singletonPath : {g : Graph} → EdgeLabel g → Path g 1
 singletonPath e = record { edges = e ∷ [] ; connected = λ {i} P → ⊥-elim $ P (lemma i) }
   where lemma : (i : Fin 1) → 1 ≡ ℕ.suc (𝔽.toℕ i)
         lemma 𝔽.zero = refl
+
+join : ∀ {n} {m} {g : Graph} {p₀ : Path g (ℕ.suc n)} {p₁ : Path g (ℕ.suc m)}
+     → target p₀ ≡ base p₁ → Path g (ℕ.suc n ℕ.+ ℕ.suc m)
+join = {!!}
 
 module _ n where
   private
