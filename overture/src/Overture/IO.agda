@@ -11,8 +11,10 @@ open import Level using (Lift) renaming (suc to lsuc)
 
 IO = IO′.IO
 
-putStrLn : String → IO ⊤
+-- reexports
 putStrLn = StdIO.run ∘ StdIO.putStrLn
+putStrLnᶜ = StdIO.run ∘ StdIO.putStrLn∞
+getContents = StdIO.run StdIO.getContents
 
 sequence′ : ∀ {ℓ} {a : Set ℓ} → Colist (IO a) → IO (Lift ℓ ⊤)
 sequence′ = StdIO.run ∘ StdIO.sequence′ ∘ 𝕃ᶜ.map StdIO.lift

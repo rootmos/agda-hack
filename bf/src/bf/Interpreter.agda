@@ -1,6 +1,5 @@
 module bf.Interpreter where
 
-open import Category.Monad using (RawMonad)
 open import Codata.Musical.Colist as 𝕃ᶜ using (Colist; _∷_; [])
 open import Codata.Musical.Notation using (♯_; ♭)
 open import Data.Bool using (Bool; true; false; not)
@@ -37,14 +36,10 @@ record Value ℓ c : Set (lsuc (c ⊔ ℓ)) where
   default : Maybe Carrier → Carrier
   default c = 𝕄.fromMaybe 0# c
 
-module Mk {ℓ₀} {ℓ₁}
-  (value : Value ℓ₀ ℓ₁)
-  (Tape : Tape (Value.Carrier value))
-  {f : ∀ {ℓ} → Set ℓ → Set ℓ} (F : ∀ {ℓ} → RawMonad {ℓ} f) where
+module Mk {ℓ₀} {ℓ₁} (value : Value ℓ₀ ℓ₁) (Tape : Tape (Value.Carrier value)) where
   open Value value renaming (Carrier to V)
   open Tape Tape renaming (Carrier to T)
   open import bf.Parser as Parser using (Graph; Label; Edge)
-  open RawMonad {ℓ₀} F
 
   record State : Set ℓ₀ where
     field
@@ -53,7 +48,7 @@ module Mk {ℓ₀} {ℓ₁}
       program : Σ[ g ∈ Graph ] Label (Graph.size g)
 
   initial : Graph → State
-  initial g = record { tape = empty ; pointer = + 0 ; program = g , Parser.initial _ }
+  initial g = record { tape = empty ; pointer = + 0 ; program = g , Parser.initial }
 
   module _ (s : State) where
     private
@@ -111,10 +106,15 @@ module Mk {ℓ₀} {ℓ₁}
           go eof (record { target = t ; effect = Parser.cond c } ∷ es) input | false = go eof es input
           go eof (record { target = t ; effect = Parser.cond c } ∷ es) input | true = goto s t , input , nothing
 
+  terminated? : State → Bool
+  terminated? record { program = _ , Label.initial } = false
+  terminated? record { program = _ , Label.terminal } = true
+  terminated? record { program = _ , Label.index _ } = false
+
   eval : EOFBehavior → State → Colist V → Colist (State × Colist V × Maybe V)
-  eval _ record { tape = _ ; pointer = _ ; program = _ , inj₁ _ } _ = []
-  eval eof s @ record { tape = _ ; pointer = _ ; program = _ , inj₂ _ } input =
-    let hd@(s′ , input , _) = step eof s input in hd ∷ ♯ eval eof s′ input
+  eval eof s input with terminated? s
+  eval eof s input | false = let hd@(s , input , _) = step eof s input in hd ∷ ♯ eval eof s input
+  eval eof s input | true = []
 
   {-# TERMINATING #-}
   run : EOFBehavior → Graph → Colist V → Colist V

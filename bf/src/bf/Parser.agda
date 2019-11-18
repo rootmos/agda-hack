@@ -60,12 +60,15 @@ data Error : Set where
   unmatched : Token → Error
   unimplemented : Error
 
-Label : ℕ → Set
-Label n = ⊤ ⊎ Fin n
+data Label (n : ℕ) : Set where
+  initial : Label n
+  terminal : Label n
+  index : Fin n → Label n
 
 showLabel : ∀ {n} → Label n → String
-showLabel (inj₁ tt) = "∙"
-showLabel (inj₂ i) = show𝔽 i
+showLabel initial = "α"
+showLabel terminal = "ω"
+showLabel (index i) = show𝔽 i
 
 record Edge n : Set where
   field
@@ -128,17 +131,11 @@ module _ n where
     E = Edge n
     Raw = Vec Token n
 
-  terminal : L
-  terminal = inj₁ tt
-
-  initial : L
-  initial = inj₁ tt
-
   private
     mk : Token → Fin n → Effect → E
     mk t b e with n ≟ℕ ℕ.suc (𝔽.toℕ b)
-    ... | yes _ = record { base = inj₂ b ; target = terminal ; effect = e; source = just t }
-    ... | no P = record { base = inj₂ b ; target = inj₂ $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just t }
+    ... | yes _ = record { base = index b ; target = terminal ; effect = e; source = just t }
+    ... | no P = record { base = index b ; target = index $ 𝔽.lower₁ (𝔽.suc b) P; effect = e; source = just t }
 
     brackets : Token → Maybe Match.Bracket
     brackets (jz _) = just Match.op
@@ -156,30 +153,31 @@ module _ n where
   interpretToken raw t@(jz _) b with mk t b
   ... | mk′ rewrite proj₂ (𝔽ᵒ.excSplitℕ b) =
     Match.match brackets (𝕍.drop (𝔽.toℕ b) raw) |> 𝕄.maybe′ f (inj₁ (unmatched t))
-      where f = λ j → inj₂ $ record (mk′ $ cond z) { target = inj₂ (𝔽.raise _ j) } ∷ mk′ noop ∷ []
+      where f = λ j → inj₂ $ record (mk′ $ cond z) { target = index (𝔽.raise _ j) } ∷ mk′ noop ∷ []
   interpretToken raw t@(jnz _) b with mk t b
   ... | mk′ rewrite proj₂ (𝔽ᵒ.incSplitℕ b) =
     Match.match (Match.flip brackets) (𝕍.reverse $ 𝕍.take _ raw) |> 𝕄.maybe′ f (inj₁ $ unmatched t)
       where go : ∀ k → Fin (ℕ.suc (𝔽.toℕ b)) → Fin (ℕ.suc (𝔽.toℕ b ℕ.+ k))
             go k j with 𝔽.inject+ (𝔽.toℕ j) (𝔽.toℕ b 𝔽.ℕ- j)
             ... | l rewrite ℕᵖ.m∸n+n≡m (𝔽ᵒ.toℕ-≤ j) = 𝔽.inject+ k l
-            f = λ j → inj₂ $ record (mk′ $ cond nz) { target = inj₂ $ go _ j } ∷ mk′ noop ∷ []
+            f = λ j → inj₂ $ record (mk′ $ cond nz) { target = index $ go _ j } ∷ mk′ noop ∷ []
 
 graph : ∀ {n} → Vec Token n → Error ⊎ Graph
-graph {0} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial _ ; target = terminal _ ; effect = noop ; source = nothing } ∷ [] }
+graph {0} ts = inj₂ $ record { size = 0 ; edges = λ _ → record { base = initial ; target = terminal ; effect = noop ; source = nothing } ∷ [] }
 graph {n@(ℕ.suc _)} ts = map₂ (λ es → record { size = n ; edges = edges es }) $
   M.sequenceA $ 𝕍.zip ts (𝕍.tabulate id) |> 𝕍.map λ { (t , b) → interpretToken n ts t b }
     where module M {ℓ} = 𝕍ᶜ.TraversableA {ℓ} {n} (⊎.applicative Error ℓ)
           edges : Vec (List (Edge n)) n → Label n → List (Edge n)
-          edges _ (inj₁ _) = record { base = initial _ ; target = inj₂ 𝔽.zero ; effect = noop ; source = nothing } ∷ []
-          edges es (inj₂ i) = 𝕍.lookup es i
+          edges _ initial = record { base = initial ; target = index 𝔽.zero ; effect = noop ; source = nothing } ∷ []
+          edges _ terminal = []
+          edges es (index i) = 𝕍.lookup es i
 
 module _ (g : Graph) where
   private
     s = Graph.size g
 
-  labels : Vec (Label s) (ℕ.suc s)
-  labels = initial s ∷ 𝕍.tabulate inj₂
+  labels : Vec (Label s) (ℕ.suc (ℕ.suc s))
+  labels = initial ∷ terminal ∷ 𝕍.tabulate index
 
   showGraph : String
   showGraph = goG "{" $ labels

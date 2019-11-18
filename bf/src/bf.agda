@@ -1,7 +1,7 @@
 module bf where
 
 import Overture.Unix as Unix
-open import Overture.IO as IO using (IO; putStrLn)
+open import Overture.IO as IO
 import Overture.IORef as IORef
 
 open import bf.Lexer as Lexer using (showToken)
@@ -36,24 +36,22 @@ integer = record { Carrier = ℤ
                  ; pred = ℤ.pred
                  }
 
+tape : Interpreter.Tape ℤ
+tape = record { Carrier = _
+              ; get = λ t k → Map.lookup _ k t
+              ; set = λ t k v → Map.insert _ k v t
+              ; empty = Map.empty ℤᵖ.<-strictTotalOrder
+              }
+
+module I = Interpreter.Mk integer tape
+
 open RawMonad {levelOfType ℤ} IO.monad
 
-module I where
-  open Interpreter.Mk integer IO.monad public
-
-  empty : IO (Interpreter.Tape ℤ IO)
-  empty = IORef.newIORef (Map.empty ℤᵖ.<-strictTotalOrder) <&> λ r →
-    record { get = λ k → IORef.readIORef r <&> Map.lookup _ k
-           ; set = λ k v →
-             IORef.readIORef r >>= IORef.writeIORef r ∘ Map.insert _ k v <&> lift
-           }
-
-  io : IOHandlers
-  io = record { input = λ _ → Unix.getChar <&> 𝕄.maybe′ (λ c → + ℂ.toℕ c) (+ 0)
-              ; output = λ { (+ n) → lift <$> Unix.putChar (ℂ.fromℕ n)
-                           ; -[1+ n ] → Unix.die "cannot print negative values"
-                           }
-              }
+runIO : Parser.Graph → IO _
+runIO g = getContents <&> 𝕃ᶜ.map (λ c → + ℂ.toℕ c) >>= sequence′ ∘ 𝕃ᶜ.map output ∘ I.run I.writeDefault g
+    where output : ℤ → IO ⊤
+          output (+ n) = Unix.putChar (ℂ.fromℕ n)
+          output -[1+ n ] = Unix.die "cannot print negative values"
 
 module cli where
   data Action : Set where
@@ -101,16 +99,16 @@ module cli where
     let fn = (Settings.programFilename s)
     raw ← IO.readFiniteFile fn
     let ts = Lexer.tokenize fn (𝕊.toVec raw)
-    IO.sequence′ $ 𝕃ᶜ.map (putStrLn ∘ showToken) (𝕃ᶜ.fromList $ 𝕍.toList ts)
+    sequence′ $ 𝕃ᶜ.map (putStrLn ∘ showToken) (𝕃ᶜ.fromList $ 𝕍.toList ts)
   runAction s | debugParser = do
     let fn = (Settings.programFilename s)
-    raw ← IO.readFiniteFile fn
+    raw ← readFiniteFile fn
     g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
     (putStrLn $ Parser.showGraph g) <&> lift
   runAction s | interpret = do
     let fn = (Settings.programFilename s)
-    raw ← IO.readFiniteFile fn
+    raw ← readFiniteFile fn
     g ← handleParserError $ Parser.graph ∘ Lexer.tokenize fn $ 𝕊.toVec raw
-    (I.run I.io ∘ I.initial g =<< I.empty) >> return (lift _)
+    runIO g
 
   main = Unix.getArgs >>= parseArgs >>= runAction
