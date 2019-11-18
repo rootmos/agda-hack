@@ -124,3 +124,6 @@ module Mk {ℓ₀} {ℓ₁} (value : Value ℓ₀ ℓ₁) (Tape : Tape (Value.Ca
           flatten (nothing ∷ vs) = flatten (♭ vs)
           flatten (just v ∷ vs) = v ∷ ♯ flatten (♭ vs)
 
+  _∼_ : Rel (Colist V → Colist V) _
+  f ∼ g = ∀ vs → f vs 𝕃ᶜ.≈ g vs
+
