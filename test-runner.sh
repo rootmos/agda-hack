@@ -21,13 +21,15 @@ export VERBOSE
 
 log() {
     if [ -n "$VERBOSE" ]; then
-        echo 1>&2 "$@"
+        cat 1>&2
+    else
+        cat > /dev/null
     fi
 }
 
 if [ "$ACTION" != "list" ] && [ -z "${EXECDIR-}" ]; then
-    export EXECDIR=$(mktemp -d .tests.$(date -Is).XXXXXXX)
-    log "test results in: $EXECDIR"
+    export EXECDIR=$(mktemp -d "$(pwd)/.tests.$(date -Is).XXXXXXX")
+    log <<< "test results in: $EXECDIR"
 fi
 
 
@@ -78,7 +80,8 @@ else
 fi
 
 set +o errexit
-$SHELL "$EXECDIR/$TEST_CASE.cmd" \
+env COMPILE_LOG="$EXECDIR/$TEST_CASE.compile_log" \
+    $SHELL "$EXECDIR/$TEST_CASE.cmd" \
     < "$EXECDIR/$TEST_CASE.stdin" \
     1> "$EXECDIR/$TEST_CASE.stdout" \
     2> "$EXECDIR/$TEST_CASE.stderr"
@@ -86,7 +89,8 @@ echo $? > "$EXECDIR/$TEST_CASE.exit-code"
 set -o errexit
 
 compare() {
-    diff "$1" "$2" >/dev/null
+    log <<< "comparing $(basename "$1") $(basename "$2")"
+    diff -yq "$1" "$2" | log
 }
 
 if [ -f "$TESTS_DIR/$TEST_CASE.exit-code" ]; then
